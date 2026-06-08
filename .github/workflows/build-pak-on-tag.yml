@@ -29,8 +29,8 @@ env:
 jobs:
   build:
     # Self-hosted runner (the sentania-labs image). Adjust labels to match your
-    # runner. To use GitHub-hosted runners instead, switch to `ubuntu-latest`.
-    runs-on: [self-hosted, linux, x64]
+    # runner pool. To use GitHub-hosted runners instead, switch to `ubuntu-latest`.
+    runs-on: [self-hosted, Linux, X64, generic]
 
     steps:
       - name: Checkout adapter source
