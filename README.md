@@ -9,6 +9,16 @@ adapters (`compliance`, `unifi`). The example adapter discovers one
 one property per resource — replace the resource kinds, endpoints, and metric
 keys with your target system, keeping the SHAPE.
 
+## Documentation
+
+Every SDK pak ships a standard docset under [`docs/`](docs/README.md):
+a generated inventory-tree diagram (kinds + identifying keys), plus
+hand-curated `overview.md` and `installing.md` prose pages. The two prose
+pages are scaffolded once by `docs-gen` and then curated — in this template
+they carry placeholder guidance telling you what to write when you
+instantiate a pak. Regenerate the derived files (diagram, inventory tree,
+`docs/README.md`) on every build; never hand-edit them.
+
 ## What's here
 
 ```
