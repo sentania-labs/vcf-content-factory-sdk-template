@@ -163,7 +163,9 @@ This repo is the **single source of truth** for its `.pak`. The shippable artifa
 is built by CI, never on a laptop:
 
 1. Author + commit + push to `main`.
-2. **Push a `vX.Y.Z` tag.** The `build-pak-on-tag` workflow:
+2. **Push a `vX.Y.Z` tag.** The factory's `pre-push` hook checks the release
+   rules first (see "Release gating" below), then the `build-pak-on-tag`
+   workflow:
    - pulls the published `sdk-buildkit` tarball from the factory's Releases,
    - fetches the private Broadcom SDK jar from
      `sentania-labs/vcf-content-factory-sdk-runtime` (release `sdk-2.2`),
@@ -174,6 +176,38 @@ is built by CI, never on a laptop:
 That Release asset **is** the release. A factory `/publish` that references this
 pak emits only a **pointer** to the latest Release — it never rebuilds or mirrors
 the binary.
+
+### Release gating (RULE-012 / RULE-014)
+
+Two rules gate a `v*` tag: the `0.x` dev-preview line is never tagged, and a
+pak with an open **blocking** defect against it does not ship.
+
+Both are enforced at **push** time by the factory's `.githooks/pre-push` hook,
+not by this workflow. You get it automatically once this repo is registered in
+the factory's `knowledge/context/managed_paks.md` and cloned by
+`scripts/bootstrap_managed_paks.sh`, which sets `core.hooksPath` on the clone.
+That is the normal setup: the bootstrap places pak clones inside the factory
+tree, so the hook reads the defect registry over a local path with no network
+call.
+
+Which registry governs you is decided by presence, not configuration: your own
+`knowledge/context/defects.local.md` if you keep one, otherwise the factory's
+`knowledge/context/defects.md`. Keeping your own is the recommended path if you
+are not the factory maintainer, since the factory never ships that filename and
+a `git pull` cannot conflict with it.
+
+Two consequences worth knowing:
+
+- **A clone outside a factory checkout is not gated.** Nothing is enforced on a
+  standalone clone of this repo, because there is no registry beside it to read.
+- **`git push --no-verify` and tags created in the GitHub UI bypass the hook.**
+  That is a deliberate, auditable end-run, the same category as a force-push.
+
+Earlier revisions of this template gated inside CI by fetching the factory's
+`defects.md` over HTTP on every release. That made each release depend on the
+tip of the factory's `main` branch and fail closed on an outage, over a file
+that, for most paks, could never have anything to say. See
+`knowledge/designs/defect-isolation-v1.md` in the factory.
 
 ### Required org/repo secret
 
