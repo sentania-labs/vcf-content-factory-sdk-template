@@ -54,6 +54,12 @@ jobs:
       # path: your own defects.local.md when you keep one, otherwise the
       # factory's defects.md.
       #
+      # THAT COVERS A CLONE INSIDE A FACTORY CHECKOUT ONLY. The hook checks
+      # that the repo sits under content/sdk-adapters/, so a standalone
+      # clone of a pak repo is not gated at all, and neither is a tag made
+      # in the GitHub UI or a push with --no-verify. Register the pak in
+      # knowledge/context/managed_paks.md and let bootstrap clone it.
+      #
       # This step used to curl knowledge/context/defects.md from the
       # factory's main branch on every release. For a pak the factory has
       # no defects about, and gate_pak matches Affects: by exact string
