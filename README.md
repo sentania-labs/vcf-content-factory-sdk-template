@@ -58,6 +58,23 @@ There is **no `lib/` of bundled jars** (C2 pak shape — see below).
    cooperative cancellation, and loud-failure (no sentinel for an unreadable
    value).
 
+## Installing: allow unsigned paks first
+
+Every pak built from this template is unsigned, like every pak the VCF Content
+Factory builds (Broadcom offers no way for a third party to sign one), and
+fresh VCF Operations 9.0 and 9.1 installs refuse unsigned paks. Keep this
+section in an instantiated pak's README, before its install steps. Before the
+first unsigned pak install on an instance, an administrator turns it on once:
+
+1. Log in to `https://<your Ops node>/admin` as `admin`.
+2. Administrator Settings, Security Settings: activate **Allow Unsigned PAK
+   Installation**.
+
+Without it, the install fails with `unsigned_pak_installation.not.allowed`.
+This is a cluster-wide security setting: it lets any unsigned pak be
+installed, not only yours, so decide it deliberately and consider turning it
+off again after installing. Upgraded appliances may already have it on.
+
 ## Local dev build (preview)
 
 The official `.pak` is built by CI on a tag (next section). For a local preview,
