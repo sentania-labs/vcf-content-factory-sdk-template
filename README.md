@@ -57,23 +57,30 @@ There is **no `lib/` of bundled jars** (C2 pak shape — see below).
    VCF Ops 9.0.2, which never calls `onDiscover()`), `componentLogger(Class)`,
    cooperative cancellation, and loud-failure (no sentinel for an unreadable
    value).
+5. **Keep the unsigned-pak section.** Leave `## Installing: allow unsigned
+   paks first` in the derived pak's README, directly before its install steps.
 
 ## Installing: allow unsigned paks first
 
-Every pak built from this template is unsigned, like every pak the VCF Content
-Factory builds (Broadcom offers no way for a third party to sign one), and
-fresh VCF Operations 9.0 and 9.1 installs refuse unsigned paks. Keep this
-section in an instantiated pak's README, before its install steps. Before the
-first unsigned pak install on an instance, an administrator turns it on once:
+This pak is unsigned, like every pak the VCF Content Factory builds (Broadcom
+offers no way for a third party to sign one). VCF Operations 9.0 and 9.1 refuse
+unsigned paks out of the box; behavior on 8.x is unverified. The setting below
+must be on for each install or upgrade of an unsigned pak:
 
-1. Log in to `https://<your Ops node>/admin` as `admin`.
-2. Administrator Settings, Security Settings: activate **Allow Unsigned PAK
-   Installation**.
+1. Log in to `https://<primary node>/admin` as `admin`.
+2. Administrator Settings, Security Settings: click **Activate Unsigned PAK
+   Installation** on 9.1 (**Enable Unsigned PAK Installation** on 9.0). The
+   change is refused while any cluster node is down.
+3. When uploading the pak (**Administration > Integrations > Repository >
+   Add**), tick **Ignore the PAK file signature checking**. The box only
+   appears once the setting is on.
 
-Without it, the install fails with `unsigned_pak_installation.not.allowed`.
-This is a cluster-wide security setting: it lets any unsigned pak be
-installed, not only yours, so decide it deliberately and consider turning it
-off again after installing. Upgraded appliances may already have it on.
+With the setting off, the install fails with
+`unsigned_pak_installation.not.allowed`. This is a cluster-wide security
+setting: it lets any unsigned pak be installed, not only this one, so decide
+it deliberately and consider turning it off again after installing. If you do,
+it has to go back on before you install the next build. Upgraded appliances
+keep whatever state the setting had before the upgrade.
 
 ## Local dev build (preview)
 
