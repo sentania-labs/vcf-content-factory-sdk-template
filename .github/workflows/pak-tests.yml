@@ -1,7 +1,8 @@
 # Reusable pak test matrix for the SDK pak family. Every pak repo created
 # from this template calls it from its own .github/workflows/tests.yml on
 # every push and pull request; compliance, unifi and synology call it at
-# @main. Pattern lifted from compliance's tests.yml (builds 59, 60, 94).
+# @main once their branches merge. Pattern lifted from compliance's
+# tests.yml (builds 59, 60, 94).
 #
 # GitHub-hosted runner, never the self-hosted pool: the pak repos are
 # public and this job runs pull-request code, so it must not share a
@@ -23,7 +24,8 @@
 #
 # The job id is `tests` so the legs read `tests (17)` / `tests (25)`
 # inside the called workflow; a caller whose job id is also `tests` shows
-# them as `tests / tests (17)` and `tests / tests (25)`.
+# them as `tests / tests (17)` and `tests / tests (25)` (in this template
+# repo the caller job is `tests-local`).
 #
 # Inputs reach the shell through env, never ${{ }} inside run:.
 name: pak-tests

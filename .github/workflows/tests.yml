@@ -1,8 +1,17 @@
-# Runs the pak test matrix on every push and pull request by calling this
-# repo's reusable workflow (pak-tests.yml; rationale lives in its header).
-# A pak created from this template keeps this file unchanged: it already
-# calls the template's copy at @main, so matrix and pin updates land in
-# every pak at once.
+# Runs the pak test matrix on every push and pull request by calling the
+# reusable workflow pak-tests.yml (rationale lives in its header).
+#
+# Two jobs, exactly one runs:
+#   tests-local  only in this template repo: calls the local copy, so a
+#                template PR tests its own pak-tests.yml.
+#   tests        everywhere else: a pak created from this template keeps
+#                this file unchanged and calls the template's copy at
+#                @main, so matrix and pin updates land in every pak at once.
+#
+# GitHub resolves every `uses:` reference when it loads the workflow, even
+# for a job whose `if:` skips it. On the PR that first adds pak-tests.yml,
+# @main does not have it yet, so this workflow fails at startup on that
+# PR only; it loads normally once the PR merges.
 name: tests
 
 on:
@@ -19,5 +28,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  tests-local:
+    if: github.repository == 'sentania-labs/vcf-content-factory-sdk-template'
+    uses: ./.github/workflows/pak-tests.yml
+
   tests:
+    if: github.repository != 'sentania-labs/vcf-content-factory-sdk-template'
     uses: sentania-labs/vcf-content-factory-sdk-template/.github/workflows/pak-tests.yml@main
