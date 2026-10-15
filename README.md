@@ -31,6 +31,9 @@ src/com/vcfcf/adapters/example/           # adapter Java source
   ExampleApiClient.java                   #   thin REST client
   ExampleConfig.java                      #   typed config POJO
 .github/workflows/build-pak-on-tag.yml    # CI: tag v* -> build .pak -> attach to Release
+.github/workflows/pak-tests.yml           # reusable CI: JDK 17 + 25 test matrix, no secrets, no SDK jar
+.github/workflows/tests.yml               # CI: every push and PR -> calls pak-tests.yml (@main in paks)
+ci/run_java_tests.sh                      # runs every tests/**/*Test.java, no SDK jar needed
 CHANGELOG.md                              # one line per build
 ```
 
@@ -57,6 +60,9 @@ There is **no `lib/` of bundled jars** (C2 pak shape — see below).
    VCF Ops 9.0.2, which never calls `onDiscover()`), `componentLogger(Class)`,
    cooperative cancellation, and loud-failure (no sentinel for an unreadable
    value).
+
+**Tests on every push and PR.** A new pak inherits the test workflow by keeping `.github/workflows/tests.yml` as created: it calls this template's `pak-tests.yml@main`, which runs `ci/run_java_tests.sh` (every `tests/**/*Test.java`) on JDK 17 and 25 (pass `test-script:`, `pre-check:` or `java-versions:` under `with:` to customize).
+A pak instantiated from the template also carries a copy of `pak-tests.yml` that it never runs (only the template calls its local copy); the pak may delete it.
 
 ## Local dev build (preview)
 

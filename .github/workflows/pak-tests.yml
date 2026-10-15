@@ -1,0 +1,83 @@
+# Reusable pak test matrix for the SDK pak family. Every pak repo created
+# from this template calls it from its own .github/workflows/tests.yml on
+# every push and pull request; compliance, unifi and synology call it at
+# @main once their branches merge. Pattern lifted from compliance's
+# tests.yml (builds 59, 60, 94).
+#
+# GitHub-hosted runner, never the self-hosted pool: the pak repos are
+# public and this job runs pull-request code, so it must not share a
+# runner with a release job that holds SDK_RUNTIME_SSH_KEY and
+# contents: write. It needs neither the lab nor a Docker daemon.
+#
+# No secrets and no Broadcom SDK jar, ever. The test script must compile
+# and run on a plain JDK plus python3; anything needing the SDK jar
+# (validate-sdk, build-sdk, pak-compare) stays in the tag build. A test
+# may fetch a public artifact (compliance pulls the BouncyCastle TLS jars
+# from Maven Central) provided its hash is pinned in the script.
+#
+# JDK matrix: 17 (the long-standing CI JDK) and 25 (the newest LTS) by
+# default. JDK behavior drifts between releases in ways adapters read:
+# zone-name rendering (CDT on 17, GMT-05:00 on 25) and the
+# HttpsURLConnection hostname-rejection wording both escaped review on 17
+# alone (compliance PRs #45 and #46). fail-fast is off so one leg's
+# failure does not hide the other's.
+#
+# The job id is `tests` so the legs read `tests (17)` / `tests (25)`
+# inside the called workflow; a caller whose job id is also `tests` shows
+# them as `tests / tests (17)` and `tests / tests (25)` (in this template
+# repo the caller job is `tests-local`).
+#
+# Inputs reach the shell through env, never ${{ }} inside run:.
+name: pak-tests
+
+on:
+  workflow_call:
+    inputs:
+      java-versions:
+        description: JSON array of JDK major versions to test on.
+        type: string
+        default: '["17", "25"]'
+      test-script:
+        description: Test entry point, run with bash from the repo root.
+        type: string
+        default: ci/run_java_tests.sh
+      pre-check:
+        description: Optional shell command run before the tests; skipped when empty.
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ${{ fromJSON(inputs.java-versions) }}
+
+    steps:
+      - name: Checkout adapter source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - name: Pre-check
+        if: inputs.pre-check != ''
+        env:
+          PRE_CHECK: ${{ inputs.pre-check }}
+        run: bash -c "$PRE_CHECK"
+
+      - name: Run adapter unit tests
+        env:
+          TEST_SCRIPT: ${{ inputs.test-script }}
+        run: bash "$TEST_SCRIPT"
