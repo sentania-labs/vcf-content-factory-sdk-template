@@ -1,0 +1,23 @@
+# Runs the pak test matrix on every push and pull request by calling this
+# repo's reusable workflow (pak-tests.yml; rationale lives in its header).
+# A pak created from this template keeps this file unchanged: it already
+# calls the template's copy at @main, so matrix and pin updates land in
+# every pak at once.
+name: tests
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    uses: sentania-labs/vcf-content-factory-sdk-template/.github/workflows/pak-tests.yml@main
