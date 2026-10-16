@@ -13,6 +13,10 @@
   `HttpConnectTimeoutException`, `HttpTimeoutException` and
   `SocketTimeoutException` to DOWN, wrapped or not (#13). New
   `ExampleFailures` helper, same shape as the UniFi and Synology ones.
+- fix(adapter): `Status|value` is published only when the field is present
+  and numeric (#10). New `metricIfPresent(out, key, SimpleJson)` helper skips
+  a missing, null or non-numeric field instead of publishing the `0.0` that
+  `SimpleJson.asDouble()` returns for it; a real zero is still published.
 
 ## 0.1.0.1 (2026-06-10)
 

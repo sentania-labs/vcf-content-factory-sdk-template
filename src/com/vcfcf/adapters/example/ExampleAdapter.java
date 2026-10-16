@@ -360,7 +360,9 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
             return;
         }
         // Example numeric metric + string property. Replace with your fields.
-        metric(out, "Status|value", item.get("value").asDouble());
+        // metricIfPresent skips a missing or non-numeric field: a gap in the
+        // chart, never a published 0.0 that looks like a real reading.
+        metricIfPresent(out, "Status|value", item.get("value"));
         prop(out, "Configuration|name", item.get("name").asString(""));
     }
 
@@ -374,11 +376,30 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
 
     // -----------------------------------------------------------------------
     // MetricData append helpers.
+    //   metricIfPresent() -> numeric, only when the JSON field holds a number.
+    //               Use this for every metric read from a payload.
     //   metric() -> numeric  (new MetricKey(key), isProperty=false)
     //   prop()   -> string property (new MetricKey(true, key)) — REQUIRED for
     //               strings; the platform silently discards string values on a
     //               non-property MetricKey.
     // -----------------------------------------------------------------------
+
+    /**
+     * Publish {@code field} as a numeric metric only when it is present and
+     * numeric. {@code SimpleJson.asDouble()} returns {@code 0.0} for a
+     * missing, null or non-numeric field, so calling {@code metric(out, key,
+     * field.asDouble())} directly publishes absence as a zero. Absence is not
+     * a measured value: skip it.
+     *
+     * @return whether a sample was added
+     */
+    private static boolean metricIfPresent(List<MetricData> out, String key,
+            SimpleJson field) {
+        Double value = ExampleValues.numericOrNull(field.asString());
+        if (value == null) return false;
+        metric(out, key, value);
+        return true;
+    }
 
     private static void metric(List<MetricData> out, String key, double value) {
         out.add(new MetricData(new MetricKey(key), System.currentTimeMillis(), value));
