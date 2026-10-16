@@ -302,19 +302,14 @@ jobs:
           cd dist
           sha256sum -c SHA256SUMS
 
-      # Signed build provenance for the .pak (issue #18 CI6). Verify with:
-      #   gh attestation verify <file>.pak --repo <owner>/<repo>
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: dist/*.pak
-
       # A published release is immutable (issue #18 CI6): no --clobber. If
       # the tag's Release already has any asset, fail instead of replacing
       # it; a deliberate rebuild means deleting that Release by hand first.
-      # A Release that exists with no assets (created by hand for its notes)
-      # gets the assets uploaded.
-      - name: Publish .pak and SHA256SUMS to the tag's Release
+      # This runs BEFORE the attestation, so a re-run after a successful
+      # publish is refused without writing a provenance attestation for a pak
+      # that is never published.
+      - name: Refuse to replace a published Release
+        id: existing
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -326,6 +321,33 @@ jobs:
               echo "::error::Release ${GITHUB_REF_NAME} already has ${n} asset(s); refusing to replace a published pak. Delete the Release by hand if a rebuild is intended."
               exit 1
             fi
+            echo "release=empty" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Signed build provenance for the .pak (issue #18 CI6). Verify with:
+      #   gh attestation verify <file>.pak --repo <owner>/<repo>
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.pak
+
+      # A Release that exists with no assets (created by hand for its notes)
+      # gets the assets uploaded; otherwise the Release is created with them.
+      # Known limit, accepted: uploading into an existing empty Release is
+      # not atomic. If the .pak uploads and SHA256SUMS then fails, a re-run
+      # is refused by the step above (the Release now has an asset). The
+      # operator deletes that half-published Release by hand and re-runs the
+      # workflow. (gh release create with the files is a single call and
+      # does not have this window in the common no-Release case.)
+      - name: Publish .pak and SHA256SUMS to the tag's Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_STATE: ${{ steps.existing.outputs.release }}
+        run: |
+          set -euo pipefail
+          if [ "$RELEASE_STATE" = "empty" ]; then
             gh release upload "${GITHUB_REF_NAME}" dist/*.pak dist/SHA256SUMS \
               --repo "$GITHUB_REPOSITORY"
           else
