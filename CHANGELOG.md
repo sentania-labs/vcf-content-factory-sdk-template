@@ -23,8 +23,9 @@
   reads the same snapshot through a `Map<id, item>` index (was one full-list
   GET per resource plus a linear scan). A failed read is remembered for the
   rest of its cycle, so a down target costs one read per cycle. New
-  `CycleCache` helper; the children's `SnapshotCache` is referenced for the
-  production version (cross-cycle back-off, maximum age).
+  `CycleCache` helper; the children's `SnapshotCache` is referenced for what
+  a production pak adds on top (failure back-off across cycles, one WARN per
+  failed read). The maximum age is in the template too (entry below).
 - fix(adapter): a cycle running while the instance is discarded stops with
   `InterruptedException("discarded")` instead of an NPE (the snapshot read
   copies the volatile `api` field to a local and checks it), and `rediscover`
@@ -85,7 +86,8 @@
   every read ERROR with a reason, like an invalid host or port (review N5).
 - docs: commit the generated dev-preview stamps (`0.0.0.2`) in
   `docs/README.md`, `docs/inventory-tree.md` and `REFERENCE.md`, as the
-  children do; they move to the release stamp at release (review N7).
+  children do (review N7). These generated stamps show the dev-preview build
+  until the tag build rewrites them with the release version.
 - fix(adapter): a snapshot whose `data` list is non-empty but has no item
   ids at all (schema drift, for example a renamed id field) now fails the
   read (resources go ERROR) instead of discovering only World and leaving
