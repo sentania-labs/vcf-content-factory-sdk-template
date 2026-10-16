@@ -28,6 +28,11 @@
   `InterruptedException("discarded")` instead of an NPE (the snapshot read
   copies the volatile `api` field to a local and checks it), and `rediscover`
   checks `isAbortRequested()` at entry (#14).
+- fix(adapter): response bodies are read through a bounded handler (#12). New
+  `BoundedBody` caps a 200 body at 8 MB (`DEFAULT_MAX_BYTES`, one constant)
+  and fails with `IOException` past it, without buffering the rest; non-200
+  bodies are discarded unread. `ExampleApiClient.get()` rejects a 200 with a
+  non-JSON `Content-Type` (for example an HTML proxy page) before parsing.
 
 ## 0.1.0.1 (2026-06-10)
 

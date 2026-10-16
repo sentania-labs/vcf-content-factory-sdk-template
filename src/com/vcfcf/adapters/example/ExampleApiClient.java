@@ -23,6 +23,10 @@ import java.net.http.HttpResponse;
  *
  * <p><b>Secrets never leak.</b> Error/log paths surface only the HTTP status and
  * a redacted path — never a request body, header, or credential value.
+ *
+ * <p><b>Bounded reads.</b> Every body goes through {@link BoundedBody}: at most
+ * {@link BoundedBody#DEFAULT_MAX_BYTES} is buffered, and a 200 that is not JSON
+ * (a proxy or captive-portal page, for example) is rejected before parsing.
  */
 public final class ExampleApiClient {
 
@@ -42,11 +46,19 @@ public final class ExampleApiClient {
     // --- HTTP ---
 
     private SimpleJson get(String path) throws IOException, InterruptedException {
-        HttpResponse<String> resp = http.get(path, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> resp = http.get(path,
+                new BoundedBody(BoundedBody.DEFAULT_MAX_BYTES));
         if (resp.statusCode() != 200) {
             // Status + redacted path only — never echo body/headers. // REDACT-SECRET
             throw new IOException("GET " + redact(path) + " returned HTTP "
                     + resp.statusCode());
+        }
+        // A missing Content-Type is left to the parser; a present non-JSON one
+        // (an HTML login or error page answering 200) is unreadable, not data.
+        String type = resp.headers().firstValue("Content-Type").orElse(null);
+        if (type != null && !BoundedBody.isJson(type)) {
+            throw new IOException("GET " + redact(path) + " returned Content-Type "
+                    + type.split(";", 2)[0].trim() + ", expected JSON");
         }
         return SimpleJson.parse(resp.body());
     }
