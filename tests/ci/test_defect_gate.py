@@ -112,6 +112,35 @@ class GateTest(unittest.TestCase):
                     defect_gate.gate_pak("template", p)
                 self.assertEqual(self.run_cli(p, "template"), 1)
 
+    def indented_fields(self, pad: str) -> str:
+        text = entry(2, "template")
+        return "\n".join(pad + l if l.startswith("- **") else l
+                         for l in text.splitlines()) + "\n"
+
+    def test_fields_indented_one_to_three_spaces_parse(self):
+        for pad in (" ", "  ", "   "):
+            with self.subTest(indent=len(pad)):
+                p = self.write(registry(entry(1, "unifi"), self.indented_fields(pad)))
+                hits = defect_gate.gate_pak("template", p)
+                self.assertEqual([e.id for e in hits], ["DEF-002"])
+                self.assertEqual(hits[0].severity, "blocking")
+                self.assertEqual(self.run_cli(p, "template"), 2)
+
+    def test_fields_indented_as_code_block_fail_closed(self):
+        for pad in ("    ", "\t", " \t"):
+            with self.subTest(indent=repr(pad)):
+                p = self.write(registry(entry(1, "unifi"), self.indented_fields(pad)))
+                with self.assertRaises(defect_gate.DefectRegistryError):
+                    defect_gate.gate_pak("template", p)
+                self.assertEqual(self.run_cli(p, "template"), 1)
+
+    def test_one_deep_indented_status_line_fails_closed(self):
+        # Only the Status line in a code-block indent: before, it was glued
+        # onto the previous field and the entry failed later or not at all.
+        text = entry(2, "template").replace("- **Status:**", "    - **Status:**")
+        p = self.write(registry(entry(1, "unifi"), text))
+        self.assertEqual(self.run_cli(p, "template"), 1)
+
     def test_prose_heading_is_not_a_defect(self):
         p = self.write(registry(entry(1, "unifi")) + "\n### DEFECTS ELSEWHERE\n\nprose\n")
         self.assertEqual(defect_gate.gate_pak("template", p), [])

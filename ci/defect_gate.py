@@ -130,8 +130,8 @@ _SECTION_RE = re.compile(r"^#{1,4}\s+(DEF-\d+)\b.*$")
 _DEF_HEADING_RE = re.compile(r"^#+\s*DEF-", re.IGNORECASE)
 # Leading whitespace before a heading. Markdown allows up to three spaces
 # before an ATX heading; four or more spaces (or a tab) make the line an
-# indented code block, not a heading. Both regexes above are matched after
-# this indent is split off (Codex P1 on unifi PR #37: an indented open
+# indented code block, not a heading. Both regexes above, and _FIELD_RE, are
+# matched after this indent is split off (Codex P1 on unifi PR #37: an indented open
 # blocker was parsed by neither and silently dropped).
 _INDENT_RE = re.compile(r"^([ \t]*)(.*)$")
 _FIELD_RE = re.compile(r"^-\s+\*\*([^:]+):\*\*\s*(.*)")
@@ -243,7 +243,19 @@ def load_registry(
             continue
 
         # --- Field line ---
-        m_field = _FIELD_RE.match(line)
+        # Same indent rule as headings: a field line indented by 0 to 3
+        # spaces is a field; 4+ spaces or a tab is a code block in Markdown,
+        # and before this rule it fell into the continuation branch and was
+        # appended to the previous field's value (a Status or Severity line
+        # lost that way). Fail closed instead.
+        m_field = _FIELD_RE.match(rest)
+        if m_field and ("\t" in indent or len(indent) > 3):
+            raise DefectRegistryError(
+                f"line {lineno}: field line {rest!r} in {current_id} is "
+                f"indented by {len(indent)} character(s) (a tab or 4+ "
+                f"spaces), which Markdown renders as a code block; refusing "
+                f"to guess"
+            )
         if m_field:
             fname = m_field.group(1).strip()
             fval = m_field.group(2).strip()
