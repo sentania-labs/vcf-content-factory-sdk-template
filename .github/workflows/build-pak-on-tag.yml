@@ -162,7 +162,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # The kit is pure stdlib + pyyaml (see the Set up Python and Ensure PyYAML steps).
+      # The kit is pure stdlib + pyyaml (see the Set up Python and Install pinned PyYAML steps).
       # Own the interpreter: the hosted image's system python3 is externally
       # managed (PEP 668) and may refuse a bare `pip install`.
       - name: Set up Python
@@ -170,8 +170,11 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Ensure PyYAML
-        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+      # Hash-pinned, wheels only (issue #18 CI7); see ci/requirements.txt.
+      - name: Install pinned PyYAML
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check \
+            --require-hashes --only-binary :all: -r ci/requirements.txt
 
       - name: Download sdk-buildkit from factory releases
         env:
