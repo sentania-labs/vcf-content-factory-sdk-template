@@ -24,6 +24,10 @@
   rest of its cycle, so a down target costs one read per cycle. New
   `CycleCache` helper; the children's `SnapshotCache` is referenced for the
   production version (cross-cycle back-off, maximum age).
+- fix(adapter): a cycle running while the instance is discarded stops with
+  `InterruptedException("discarded")` instead of an NPE (the snapshot read
+  copies the volatile `api` field to a local and checks it), and `rediscover`
+  checks `isAbortRequested()` at entry (#14).
 
 ## 0.1.0.1 (2026-06-10)
 

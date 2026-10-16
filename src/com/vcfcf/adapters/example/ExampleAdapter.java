@@ -302,6 +302,8 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
             public void rediscover(ExampleConfig cfg, ManagedHttpClient http,
                     ResourceConfig adapterInst, AdapterBase adapter)
                     throws InterruptedException, Exception {
+                // Stop/discard may land between cycles; honor it before any read.
+                if (isAbortRequested()) return;
                 snapshots.beginCycle();
                 logInfo("ExampleAdapter rediscover (collect-path discovery): enumerating");
                 enumerateResources(currentSnapshot(),
@@ -368,7 +370,14 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
      * response would publish a healthy-looking but data-free instance.
      */
     private Snapshot fetchSnapshot() throws Exception {
-        SimpleJson items = api.listItems();
+        // Read the volatile field once: onDiscard() nulls it, possibly while
+        // this cycle is still running. A discarded instance stops the cycle
+        // (InterruptedException) instead of failing with an NPE.
+        ExampleApiClient client = this.api;
+        if (client == null) {
+            throw new InterruptedException("discarded");
+        }
+        SimpleJson items = client.listItems();
         SimpleJson data = items.get("data");
         if (data.isNull() || !data.isList()) {
             throw new IOException("Remote /api/items returned a 200 payload with no "
