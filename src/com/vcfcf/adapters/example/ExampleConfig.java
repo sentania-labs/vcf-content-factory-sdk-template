@@ -11,9 +11,10 @@ import java.util.regex.Pattern;
  * {@link ExampleAdapter#configureAdapter}. Immutable: every field is
  * {@code final} and set once in the constructor.
  *
- * <p><b>Credential redaction:</b> {@link #password} is a secret. It is read
- * here and consumed only by the HTTP auth strategy in
- * {@link ExampleAdapter#buildHttpClient}. It MUST NOT appear in any log line,
+ * <p><b>Credential redaction:</b> the password is a secret. It is held in a
+ * private field and read, through the package-private {@link #password()},
+ * only by the HTTP auth strategy in {@link ExampleAdapter#buildHttpClient}
+ * (issue #15). {@link #toString()} prints {@code password=***}. It MUST NOT appear in any log line,
  * exception message, or URL. Search this repo for the marker
  * {@code // REDACT-SECRET} to audit every place a secret is handled.
  *
@@ -35,8 +36,8 @@ public final class ExampleConfig {
     /** API username (credential field). */
     public final String username;
 
-    /** API password (credential field). // REDACT-SECRET — never log this. */
-    public final String password;
+    /** API password (credential field). Private: never log it. // REDACT-SECRET */
+    private final String password;
 
     /** Lab opt-out: skip TLS verification for self-signed certs. */
     public final boolean allowInsecure;
@@ -89,6 +90,21 @@ public final class ExampleConfig {
                 + ": the target certificate is not validated, so the credentials "
                 + "go to whatever answers at that address. Set Allow Insecure SSL "
                 + "to false unless this is a lab target you accept that for.";
+    }
+
+    /**
+     * The password, for the auth strategy only. Package-private on purpose:
+     * {@code ExampleAdapter.buildHttpClient} is its one caller. // REDACT-SECRET
+     */
+    String password() {
+        return password;
+    }
+
+    /** Safe to log: the password is always {@code ***}. // REDACT-SECRET */
+    @Override
+    public String toString() {
+        return "ExampleConfig{host=" + host + ", port=" + port + ", username="
+                + username + ", allowInsecure=" + allowInsecure + ", password=***}";
     }
 
     /** Base URL for the remote API. Carries no secret, safe to log. */

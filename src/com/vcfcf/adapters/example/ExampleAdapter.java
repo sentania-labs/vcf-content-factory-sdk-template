@@ -173,7 +173,7 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
         // password never leaves the client and is never logged. // REDACT-SECRET
         HttpClientBuilder b = HttpClientBuilder.builder()
                 .baseUrl(cfg.baseUrl())
-                .auth(new BasicAuth(cfg.username, cfg.password)) // REDACT-SECRET
+                .auth(new BasicAuth(cfg.username, cfg.password())) // REDACT-SECRET
                 .retryPolicy(RetryPolicy.builder()
                         .maxAttempts(3)
                         .baseDelayMs(1000)

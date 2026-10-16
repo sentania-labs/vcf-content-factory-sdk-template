@@ -40,6 +40,9 @@
   Connection shows. The base URL is built with `new URI(...)`. A configure
   with an invalid value builds no client and every read fails with that
   message (ERROR) until the instance is edited. `port` is now an `int`.
+- fix(adapter): `ExampleConfig.password` is private, read only through a
+  package-private `password()` used by `buildHttpClient`, and `toString()`
+  prints host, port, username, allowInsecure and `password=***` (#15).
 
 ## 0.1.0.1 (2026-06-10)
 
