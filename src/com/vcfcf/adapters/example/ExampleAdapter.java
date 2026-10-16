@@ -102,8 +102,8 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
             new CycleCache<>(COLLECTION_INTERVAL_MS, System::currentTimeMillis);
 
     /**
-     * Why the last configure built no client (an invalid host or port), or
-     * {@code null}. Every read this cycle then fails with it (ERROR) until
+     * Why the last configure built no client (an invalid host or port, or a
+     * client that could not be built), or {@code null}. Every read this cycle then fails with it (ERROR) until
      * the instance is edited.
      */
     private volatile String configError;
@@ -135,22 +135,37 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
 
     @Override
     protected void configureAdapter(ResourceStatus status, ResourceConfig rc) {
+        // Drop the previous configuration's client first: the framework has
+        // already discarded its HTTP client, and if anything below throws,
+        // no read may go through the stale one.
+        this.api = null;
+        this.configError = null;
+        snapshots.beginCycle();
         ExampleConfig cfg;
         try {
             cfg = buildConfig(rc);
         } catch (IllegalArgumentException e) {
             // Invalid host or port (ExampleConfig validates them). Build no
             // client; every read fails with this message until the instance
-            // is edited, and Test Connection shows the same message.
-            this.api = null;
+            // is edited, and Test Connection shows the same message. The
+            // message never quotes a rejected value. // REDACT-SECRET
             this.configError = e.getMessage();
-            snapshots.beginCycle();
             logError("ExampleAdapter configuration is invalid: " + e.getMessage(), e);
             return;
         }
-        this.configError = null;
         this.config = cfg;
-        this.httpClient = buildHttpClient(cfg);
+        try {
+            this.httpClient = buildHttpClient(cfg);
+        } catch (RuntimeException e) {
+            // For example a platform trust-store failure. Same posture as an
+            // invalid config: no client, every read fails ERROR with a reason
+            // that points at this log line (the class name only, not the text).
+            this.configError = "the HTTP client could not be built ("
+                    + e.getClass().getSimpleName() + "); see the configure ERROR "
+                    + "in the adapter log";
+            logError("ExampleAdapter could not build its HTTP client", e);
+            return;
+        }
         this.api = new ExampleApiClient(this.httpClient,
                 componentLogger(ExampleApiClient.class));
         // A new configuration must not be served the old one's snapshot.
