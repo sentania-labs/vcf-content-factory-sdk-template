@@ -24,6 +24,13 @@ import java.util.regex.Pattern;
  * {@link IllegalArgumentException} whose message names the field, which
  * Test Connection shows as is. So the base URL is always the target the
  * operator meant, never a scheme, path or user smuggled in through the host.
+ *
+ * <p><b>Messages never echo a rejected value.</b> An operator may paste
+ * {@code https://user:password@host} into the Host field, and these messages
+ * are logged on configure, on every read of every cycle, and shown in Test
+ * Connection. A value is quoted only after it has passed the character check
+ * (letters, digits, hyphens, dots, or hex digits and colons inside brackets),
+ * so it cannot carry a user name or password. // REDACT-SECRET
  */
 public final class ExampleConfig {
 
@@ -119,17 +126,18 @@ public final class ExampleConfig {
         }
         if (h.startsWith("[")) {
             if (!IPV6.matcher(h).matches()) {
-                throw new IllegalArgumentException("Host / IP Address '" + h
-                        + "' is not a valid bracketed IPv6 address, for example "
-                        + "[fd00::10]");
+                // Not quoted: it failed the character check. // REDACT-SECRET
+                throw new IllegalArgumentException("Host / IP Address is not a "
+                        + "valid bracketed IPv6 address (hex digits and colons "
+                        + "inside [ ], for example [fd00::10])");
             }
             return h;
         }
-        if (h.matches(".*[/@?#:\\s].*")) {
-            throw new IllegalArgumentException("Host / IP Address '" + h
-                    + "' must be a bare hostname or IP address: no scheme, path, "
-                    + "user, port or spaces (put the port in the Port field, and "
-                    + "an IPv6 address in brackets)");
+        String broken = brokenHostRule(h);
+        if (broken != null) {
+            // Not quoted: it failed the character check. // REDACT-SECRET
+            throw new IllegalArgumentException("Host / IP Address must be a bare "
+                    + "hostname or IP address: " + broken);
         }
         if (IPV4.matcher(h).matches()) {
             for (String part : h.split("\\.")) {
@@ -144,7 +152,42 @@ public final class ExampleConfig {
             throw new IllegalArgumentException("Host / IP Address '" + h
                     + "' is not a valid hostname (letters, digits, hyphens and dots)");
         }
+        // "999" or "10.1" would be read as a shorthand IPv4 literal (0.0.3.231,
+        // 10.0.0.1), not the hostname the operator meant.
+        String lastLabel = h.substring(h.lastIndexOf('.') + 1);
+        if (lastLabel.chars().allMatch(Character::isDigit)) {
+            throw new IllegalArgumentException("Host / IP Address '" + h
+                    + "' is neither a hostname nor a full dotted IPv4 address "
+                    + "(a.b.c.d)");
+        }
         return h;
+    }
+
+    /**
+     * Which rule a host outside brackets breaks, in operator words, or
+     * {@code null} when it has none of the forbidden characters. Names the
+     * rule only, never the value. // REDACT-SECRET
+     */
+    private static String brokenHostRule(String h) {
+        if (h.indexOf('@') >= 0) {
+            return "it must not contain a user name or password ('@')";
+        }
+        if (h.contains("://") || h.indexOf('/') >= 0) {
+            return "it must not contain a scheme or path ('https://', '/')";
+        }
+        if (h.indexOf('?') >= 0 || h.indexOf('#') >= 0) {
+            return "it must not contain a query or fragment ('?', '#')";
+        }
+        if (h.indexOf(':') >= 0) {
+            return "it must not contain a port (put it in the Port field) or an "
+                    + "unbracketed IPv6 address (write [fd00::10])";
+        }
+        for (int i = 0; i < h.length(); i++) {
+            if (Character.isWhitespace(h.charAt(i))) {
+                return "it must not contain spaces";
+            }
+        }
+        return null;
     }
 
     static int validPort(String raw) {
@@ -157,8 +200,10 @@ public final class ExampleConfig {
             n = -1;
         }
         if (n < 1 || n > 65535) {
-            throw new IllegalArgumentException("Port '" + p
-                    + "' must be a number from 1 to 65535");
+            // Quote it only when it is plain digits. // REDACT-SECRET
+            String shown = p.matches("\\d{1,10}") ? " '" + p + "'" : "";
+            throw new IllegalArgumentException("Port" + shown
+                    + " must be a number from 1 to 65535");
         }
         return n;
     }
@@ -167,6 +212,7 @@ public final class ExampleConfig {
         try {
             return new URI("https", null, host, port, null, null, null).toString();
         } catch (URISyntaxException e) {
+            // host has passed the character check here, so quoting it is safe.
             throw new IllegalArgumentException("Host / IP Address '" + host
                     + "' does not form a valid URL: " + e.getReason());
         }

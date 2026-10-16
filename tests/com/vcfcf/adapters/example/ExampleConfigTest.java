@@ -46,7 +46,7 @@ public final class ExampleConfigTest {
                 "https://nas.lab", "nas.lab/api", "user@nas.lab", "nas.lab?x=1",
                 "nas.lab#frag", "nas lab", "nas.lab:8443", "fd00::10",
                 "[fd00::10", "[nas.lab]", "[]", "-nas.lab", "nas-.lab", "nas..lab",
-                "nas_lab", "256.1.1.1", "10.0.0.999"}) {
+                "nas_lab", "256.1.1.1", "10.0.0.999", "999", "10.1", "nas.123"}) {
             expectInvalid(() -> cfg(h, null), "Host / IP Address", "host <" + h + ">");
         }
     }

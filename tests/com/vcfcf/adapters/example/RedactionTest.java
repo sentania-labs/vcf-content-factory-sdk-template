@@ -12,6 +12,7 @@ public final class RedactionTest {
     public static void main(String[] args) throws Exception {
         toStringRedacts();
         passwordFieldIsPrivate();
+        rejectedValuesNeverEchoed();
         System.out.println("RedactionTest: all assertions passed");
     }
 
@@ -26,6 +27,33 @@ public final class RedactionTest {
         T.check(s.contains("username=svc-ops"), "username: " + s);
         T.check(s.contains("allowInsecure=true"), "allowInsecure: " + s);
         T.eq("S3cret-Pw!", c.password(), "the accessor still hands it to the auth strategy");
+    }
+
+    /**
+     * Review B1: a credential pasted into Host or Port is rejected without
+     * being copied into the message, which is logged every cycle and shown
+     * in Test Connection.
+     */
+    static void rejectedValuesNeverEchoed() {
+        String[][] cases = {
+            {"user:S3cret@nas.lab", null},
+            {"https://admin:S3cret@nas.lab", null},
+            {"https://admin:S3cret@nas.lab/api", null},
+            {"admin@S3cret", null},
+            {"[admin:S3cret@fd00::10]", null},
+            {"S3cret word", null},
+            {"nas.lab", "S3cret"},
+            {"nas.lab", "S3cret:443"},
+        };
+        for (String[] c : cases) {
+            try {
+                new ExampleConfig(c[0], c[1], "u", "p", null);
+                throw new AssertionError("must be rejected: host/port case " + c[0]);
+            } catch (IllegalArgumentException e) {
+                T.check(!e.getMessage().contains("S3cret"),
+                        "message must not echo the credential: " + e.getMessage());
+            }
+        }
     }
 
     static void passwordFieldIsPrivate() throws Exception {
