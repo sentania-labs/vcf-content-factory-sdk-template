@@ -88,18 +88,23 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
     /**
      * Collection interval in milliseconds; MUST match
      * {@code monitoringInterval} (minutes) of the adapter instance kind in
-     * describe.xml. Used as the snapshot's maximum age.
+     * describe.xml. Half of it is the snapshot's maximum age.
      */
     private static final long COLLECTION_INTERVAL_MS = 5L * 60 * 1000;
 
     /**
      * This cycle's snapshot of the remote API: one read per cycle, shared by
      * {@code rediscover} and every per-resource {@code collect}. Never served
-     * once it is one collection interval old, even if no new cycle began.
-     * See {@link CycleCache}.
+     * once it is half a collection interval old, even if no new cycle began.
+     * Half, not a whole one: the age counts from when the read finished, and
+     * the next cycle starts one interval after the last one started, so a
+     * whole-interval limit could still hand the previous cycle's data to a
+     * cycle that skipped its rediscover. Half also leaves room for a cycle
+     * that runs long (it then reads again mid-cycle, which is fresher, not
+     * staler). See {@link CycleCache}.
      */
     private final CycleCache<Snapshot> snapshots =
-            new CycleCache<>(COLLECTION_INTERVAL_MS, System::currentTimeMillis);
+            new CycleCache<>(COLLECTION_INTERVAL_MS / 2, System::currentTimeMillis);
 
     /**
      * Why the last configure built no client (an invalid host or port, or a

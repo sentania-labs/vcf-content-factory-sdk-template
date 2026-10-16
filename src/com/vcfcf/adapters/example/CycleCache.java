@@ -22,8 +22,9 @@ import java.util.function.LongSupplier;
  * <p><b>Maximum age (review W2).</b> A result, snapshot or failure, is also
  * dropped once it is {@code maxAgeMs} old (counted from when the build
  * finished), whether or not {@link #beginCycle} ran. This is the safety net
- * for a caller that stops starting cycles: a snapshot is never served as
- * this cycle's reading when it is older than one collection interval.
+ * for a caller that stops starting cycles. Use half the collection
+ * interval: the age counts from when the read finished, so a whole interval
+ * could still serve the previous cycle's snapshot to the next cycle.
  *
  * <p>This is the teaching-size version. The children
  * ({@code content/sdk-adapters/unifi} and {@code synology},
@@ -49,8 +50,8 @@ final class CycleCache<S> {
     private long builtAt;
 
     /**
-     * @param maxAgeMs the oldest result {@link #get} will serve; use the
-     *                 collection interval
+     * @param maxAgeMs the oldest result {@link #get} will serve; use half
+     *                 the collection interval
      * @param clock    milliseconds, {@code System::currentTimeMillis} in
      *                 production
      */

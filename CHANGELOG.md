@@ -56,14 +56,14 @@
   (#17). README lists the new helper classes and tests.
 - fix(adapter): host validation messages never quote the host, and port
   messages quote the port only when it is plain digits; they name the rule
-  broken (for example "must
-  not contain a user name or password ('@')"), so a credential pasted into
+  broken (for example "must not contain a user name or password ('@')"), so a credential pasted into
   the Host field is not logged every cycle or shown in Test Connection
   (review B1, #16). A host whose last label is all digits ("999", "10.1") is
   rejected unless it is a full dotted IPv4 address (review N6).
-- fix(adapter): the cycle snapshot is never served once it is one collection
-  interval (5 minutes, `COLLECTION_INTERVAL_MS`) old, even if no new cycle
-  began, and the `needsRediscovery` Javadoc and the `beginCycle` call say the
+- fix(adapter): the cycle snapshot is never served once it is half a
+  collection interval (2.5 minutes, `COLLECTION_INTERVAL_MS / 2`) old, even if
+  no new cycle began, so a skipped rediscover never serves the previous
+  cycle's data, and the `needsRediscovery` Javadoc and the `beginCycle` call say the
   snapshot cycle depends on `needsRediscovery()` returning true (review W2,
   #9).
 - fix(adapter): `metricIfPresent` accepts plain decimal numbers only; Java-only
