@@ -16,7 +16,8 @@ public final class MetricPresenceTest {
     static void missingFieldSkipped() {
         // null is what SimpleJson.asString() returns for an absent field or JSON null.
         for (String v : new String[] {null, "", " ", "abc", "true", "{}", "[1]",
-                "NaN", "Infinity", "-Infinity"}) {
+                "NaN", "Infinity", "-Infinity", "42d", "1f", "0x1p3", "1_000",
+                "12abc"}) {
             T.eq(null, ExampleValues.numericOrNull(v), "<" + v + "> is skipped");
         }
     }
@@ -29,5 +30,8 @@ public final class MetricPresenceTest {
         T.eq(1.0E10, ExampleValues.numericOrNull("1.0E10"),
                 "exponent form (how a large Double prints)");
         T.eq(12.0, ExampleValues.numericOrNull(" 12 "), "numeric string, trimmed");
+        T.eq(0.5, ExampleValues.numericOrNull(".5"), "leading dot");
+        T.eq(3.0, ExampleValues.numericOrNull("+3"), "explicit plus");
+        T.eq(2.5E-3, ExampleValues.numericOrNull("2.5e-3"), "lower-case exponent");
     }
 }

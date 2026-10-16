@@ -64,6 +64,9 @@
   began, and the `needsRediscovery` Javadoc and the `beginCycle` call say the
   snapshot cycle depends on `needsRediscovery()` returning true (review W2,
   #9).
+- fix(adapter): `metricIfPresent` accepts plain decimal numbers only; Java-only
+  forms such as `"42d"`, `"1f"` or `"0x1p3"` are skipped like any other
+  non-number (review N1, #10).
 
 ## 0.1.0.1 (2026-06-10)
 
