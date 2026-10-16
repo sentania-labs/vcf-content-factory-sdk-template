@@ -85,9 +85,11 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
     private volatile ExampleApiClient api;
 
     /**
-     * Collection interval in milliseconds; MUST match
+     * The default collection interval in milliseconds, the
      * {@code monitoringInterval} (minutes) of the adapter instance kind in
-     * describe.xml. Half of it is the snapshot's maximum age.
+     * describe.xml; keep the two in step. An operator can change the interval
+     * per instance in the UI, and this constant does not follow, so half of
+     * it is a safety-net maximum age for the snapshot, not a guarantee.
      */
     private static final long COLLECTION_INTERVAL_MS = 5L * 60 * 1000;
 
@@ -100,14 +102,19 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
      * whole-interval limit could still hand the previous cycle's data to a
      * cycle that skipped its rediscover. Half also leaves room for a cycle
      * that runs long (it then reads again mid-cycle, which is fresher, not
-     * staler). See {@link CycleCache}.
+     * staler). It is a safety net for the default interval only: the real
+     * cycle boundary is {@code beginCycle()} in {@code rediscover}. Age is
+     * measured on {@code System.nanoTime()}, which never steps backward, so
+     * a wall-clock change cannot keep an old snapshot looking young. See
+     * {@link CycleCache}.
      */
-    private final CycleCache<Snapshot> snapshots =
-            new CycleCache<>(COLLECTION_INTERVAL_MS / 2, System::currentTimeMillis);
+    private final CycleCache<Snapshot> snapshots = new CycleCache<>(
+            COLLECTION_INTERVAL_MS / 2, () -> System.nanoTime() / 1_000_000L);
 
     /**
      * Why the last configure built no client (an invalid host or port, or a
-     * client that could not be built), or {@code null}. Every read this cycle then fails with it (ERROR) until
+     * client that could not be built), or {@code null}. Every read this
+     * cycle then fails with it (ERROR) until
      * the instance is edited.
      */
     private volatile String configError;

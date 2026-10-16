@@ -65,10 +65,12 @@
   rejected unless it is a full dotted IPv4 address (review N6).
 - fix(adapter): the cycle snapshot is never served once it is half a
   collection interval (2.5 minutes, `COLLECTION_INTERVAL_MS / 2`) old, even if
-  no new cycle began, so a skipped rediscover never serves the previous
-  cycle's data, and the `needsRediscovery` Javadoc and the `beginCycle` call say the
-  snapshot cycle depends on `needsRediscovery()` returning true (review W2,
-  #9).
+  no new cycle began, so a skipped rediscover does not serve the previous
+  cycle's data at the default interval (a safety net, not a guarantee: an
+  operator can change the interval per instance). Age is measured on
+  `System.nanoTime()`, so a backward wall-clock step cannot disable it. The
+  `needsRediscovery` Javadoc and the `beginCycle` call say the snapshot
+  cycle depends on `needsRediscovery()` returning true (review W2, #9).
 - fix(adapter): `metricIfPresent` accepts plain decimal numbers only; Java-only
   forms such as `"42d"`, `"1f"` or `"0x1p3"` are skipped like any other
   non-number (review N1, #10).

@@ -36,8 +36,10 @@
 		<!-- ================================================================ -->
 		<!-- Adapter Instance (type=7): connection configuration              -->
 		<!-- ================================================================ -->
-		<!-- monitoringInterval (minutes) must match COLLECTION_INTERVAL_MS in -->
-		<!-- ExampleAdapter.java (half of it is the snapshot's maximum age).  -->
+		<!-- monitoringInterval (minutes) is the default collection interval;  -->
+		<!-- keep COLLECTION_INTERVAL_MS in ExampleAdapter.java in step (half  -->
+		<!-- of it is the snapshot's safety-net maximum age). An operator can  -->
+		<!-- change the interval per instance in the UI.                       -->
 		<ResourceKind key="example_adapter" nameKey="5" type="7"
 		              credentialKind="example_credentials"
 		              monitoringInterval="5">
