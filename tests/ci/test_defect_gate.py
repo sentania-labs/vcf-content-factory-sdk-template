@@ -90,6 +90,28 @@ class GateTest(unittest.TestCase):
                     defect_gate.gate_pak("template", p)
                 self.assertEqual(self.run_cli(p, "template"), 1)
 
+    def test_indented_heading_one_to_three_spaces_parses(self):
+        # Codex P1 (unifi PR #37): an indented open blocker, with another
+        # unindented entry present, was parsed by neither regex and dropped.
+        for pad in (" ", "  ", "   "):
+            with self.subTest(indent=len(pad)):
+                p = self.write(registry(
+                    entry(1, "unifi"),
+                    entry(2, "template", heading=pad + "### DEF-002")))
+                hits = defect_gate.gate_pak("template", p)
+                self.assertEqual([e.id for e in hits], ["DEF-002"])
+                self.assertEqual(self.run_cli(p, "template"), 2)
+
+    def test_heading_indented_as_code_block_fails_closed(self):
+        for pad in ("    ", "      ", "\t", " \t"):
+            with self.subTest(indent=repr(pad)):
+                p = self.write(registry(
+                    entry(1, "unifi"),
+                    entry(2, "template", heading=pad + "### DEF-002")))
+                with self.assertRaises(defect_gate.DefectRegistryError):
+                    defect_gate.gate_pak("template", p)
+                self.assertEqual(self.run_cli(p, "template"), 1)
+
     def test_prose_heading_is_not_a_defect(self):
         p = self.write(registry(entry(1, "unifi")) + "\n### DEFECTS ELSEWHERE\n\nprose\n")
         self.assertEqual(defect_gate.gate_pak("template", p), [])

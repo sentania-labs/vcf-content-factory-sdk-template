@@ -128,6 +128,12 @@ _SECTION_RE = re.compile(r"^#{1,4}\s+(DEF-\d+)\b.*$")
 # PR #22: an open blocker followed by "##### DEF-002" with a tracked
 # severity made the blocker vanish).
 _DEF_HEADING_RE = re.compile(r"^#+\s*DEF-", re.IGNORECASE)
+# Leading whitespace before a heading. Markdown allows up to three spaces
+# before an ATX heading; four or more spaces (or a tab) make the line an
+# indented code block, not a heading. Both regexes above are matched after
+# this indent is split off (Codex P1 on unifi PR #37: an indented open
+# blocker was parsed by neither and silently dropped).
+_INDENT_RE = re.compile(r"^([ \t]*)(.*)$")
 _FIELD_RE = re.compile(r"^-\s+\*\*([^:]+):\*\*\s*(.*)")
 
 # Anything that makes an Affects value more than one bare token.
@@ -206,12 +212,24 @@ def load_registry(
         line = raw_line.rstrip()
 
         # --- New entry section heading ---
-        m_section = _SECTION_RE.match(line)
-        if not m_section and _DEF_HEADING_RE.match(line):
-            raise DefectRegistryError(
-                f"line {lineno}: heading {line.strip()!r} starts like a defect "
-                f"but its id is not DEF-NNN; refusing to guess"
-            )
+        # Split off the indent: 0 to 3 spaces is a heading as written; 4+
+        # spaces or a tab before a DEF heading is a code block, and a defect
+        # must not hide in one, so that fails closed.
+        indent, rest = _INDENT_RE.match(line).groups()
+        m_section = None
+        if _DEF_HEADING_RE.match(rest):
+            if "\t" in indent or len(indent) > 3:
+                raise DefectRegistryError(
+                    f"line {lineno}: defect heading {rest!r} is indented by "
+                    f"{len(indent)} character(s) (a tab or 4+ spaces), which "
+                    f"Markdown renders as a code block; refusing to guess"
+                )
+            m_section = _SECTION_RE.match(rest)
+            if not m_section:
+                raise DefectRegistryError(
+                    f"line {lineno}: heading {rest!r} starts like a defect "
+                    f"but its id is not DEF-NNN; refusing to guess"
+                )
         if m_section:
             _flush_entry(lineno)
             current_id = m_section.group(1)
