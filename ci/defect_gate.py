@@ -15,9 +15,15 @@ load_registry(registry_path) -> List[DefectEntry]
       - duplicate IDs
       - missing required fields (Title, Severity, Status, Affects, First-seen,
         Source, Summary)
+      - a ``DEF-`` heading whose id is not ``DEF-NNN`` (a typo such as
+        ``DEF-1O2``), which would otherwise merge its fields into the
+        previous entry
+      - zero parsed entries (an empty, truncated or reformatted registry is
+        unrecognised, never an all-clear)
 
 gate_pak(pak_name, registry_path) -> List[DefectEntry]
-    Return all open blocking defects whose ``Affects:`` token is ``pak_name``.
+    Return all open blocking defects whose ``Affects:`` token is ``pak_name``
+    (compared case-insensitively).
     Raises :class:`DefectRegistryError` if the registry is malformed.
 
 gate_item(content_type, slug, registry_path) -> List[DefectEntry]
@@ -106,7 +112,15 @@ class DefectRegistryError(ValueError):
 # Regex patterns  (mirror managed_paks.py style: per-field regexes)
 # ---------------------------------------------------------------------------
 
-_SECTION_RE = re.compile(r"^#{1,4}\s+(DEF-\d+)\s*$")
+# A section heading: the id, then optional trailing text after a word break
+# ("### DEF-027 (synology build 32)"). Before template ci/ build 2 the
+# heading had to end at the id, and a heading with trailing text was not
+# seen as a section at all, so its fields merged into the previous entry
+# and the defect gated nothing (issue #18 CI4).
+_SECTION_RE = re.compile(r"^#{1,4}\s+(DEF-\d+)\b.*$")
+# Any heading that starts like a defect id. One that does not also match
+# _SECTION_RE ("### DEF-1O2") is malformed: fail closed.
+_DEF_HEADING_RE = re.compile(r"^#{1,4}\s+DEF-")
 _FIELD_RE = re.compile(r"^-\s+\*\*([^:]+):\*\*\s*(.*)")
 
 # DEF-NNN id format.
@@ -183,6 +197,11 @@ def load_registry(
 
         # --- New entry section heading ---
         m_section = _SECTION_RE.match(line)
+        if not m_section and _DEF_HEADING_RE.match(line):
+            raise DefectRegistryError(
+                f"line {lineno}: heading {line.strip()!r} starts like a defect "
+                f"but its id is not DEF-NNN; refusing to guess"
+            )
         if m_section:
             _flush_entry(lineno)
             current_id = m_section.group(1)
@@ -222,6 +241,15 @@ def load_registry(
 
     # Flush the last entry.
     _flush_entry(len(lines) + 1)
+
+    # Fail closed: a registry with no parsable entry is unrecognised (empty,
+    # truncated, an error page, or a format change), never an all-clear.
+    if not entries:
+        raise DefectRegistryError(
+            f"{registry_path}: no '### DEF-NNN' entries parsed; the registry "
+            f"is empty or in an unrecognised format. Refusing to treat it as "
+            f"clear."
+        )
 
     return entries
 
@@ -318,9 +346,9 @@ def gate_pak(
 ) -> List[DefectEntry]:
     """Return all open blocking defects that affect ``pak_name``.
 
-    ``pak_name`` is matched against the ``Affects:`` token directly —
-    it must be the exact managed-pak name as registered in
-    ``context/managed_paks.md`` (e.g. ``"synology"``, ``"unifi"``).
+    ``pak_name`` is matched against the ``Affects:`` token, ignoring case
+    and surrounding spaces, so ``Synology`` in the registry still gates the
+    ``synology`` pak (issue #18 CI4).
 
     Args:
         pak_name:      Managed pak name to check.
@@ -334,11 +362,12 @@ def gate_pak(
         DefectRegistryError: if the registry is malformed.
     """
     entries = load_registry(registry_path)
+    want = _norm(pak_name)
     return [
         e for e in entries
         if e.severity == "blocking"
         and e.status == "open"
-        and e.affects == pak_name
+        and _norm(e.affects) == want
     ]
 
 
@@ -349,7 +378,7 @@ def gate_item(
 ) -> List[DefectEntry]:
     """Return all open blocking defects that affect ``<content_type>/<slug>``.
 
-    The ``Affects:`` token is matched exactly as ``<content_type>/<slug>``.
+    The ``Affects:`` token is matched, ignoring case, as ``<content_type>/<slug>``.
     ``content_type`` is the singular directory name (e.g. ``"dashboard"``,
     ``"view"``).  ``slug`` is the filename stem (e.g.
     ``"demand_driven_capacity_v2"``).
@@ -370,13 +399,13 @@ def gate_item(
         FileNotFoundError: if the registry file is missing.
         DefectRegistryError: if the registry is malformed.
     """
-    token = f"{content_type}/{slug}"
+    token = _norm(f"{content_type}/{slug}")
     entries = load_registry(registry_path)
     return [
         e for e in entries
         if e.severity == "blocking"
         and e.status == "open"
-        and e.affects == token
+        and _norm(e.affects) == token
     ]
 
 
@@ -401,6 +430,11 @@ def gate_all(
         if e.severity == "blocking"
         and e.status == "open"
     ]
+
+
+def _norm(token: str) -> str:
+    """An ``Affects:`` token for comparison: trimmed, lower-case."""
+    return (token or "").strip().lower()
 
 
 def format_defect_line(entry: DefectEntry) -> str:

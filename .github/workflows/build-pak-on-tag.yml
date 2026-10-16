@@ -86,14 +86,34 @@ jobs:
       # markdown parsed locally, never executed — so a closed/opened defect
       # takes effect immediately while no remote code crosses the boundary.
       # Re-vendor ci/defect_gate.py from the factory when the gate's parser
-      # changes (it is propagated alongside this workflow).
+      # changes (it is propagated alongside this workflow). Note: the vendored
+      # copy now carries the CI4 fail-closed fixes below, and the factory's
+      # src/vcfcf_packaging/defects.py has moved on separately (per-entry
+      # fault isolation); reconcile the two before re-vendoring, do not just
+      # overwrite.
       #
       # The pak name is derived from the repo name
       # (vcf-content-factory-sdk-<name> -> <name>); override DEFECT_PAK_NAME
       # below if your repo is named differently.
+      #
+      # The registry stays LIVE (not pinned) on purpose: a newly opened
+      # blocking defect must stop the next tag at once. For the audit trail
+      # the step resolves the last commit on factory main that touched the
+      # registry, fetches the registry AT that commit, and prints the SHA,
+      # so the log names exactly the version that gated this release.
+      #
+      # The gate fails closed (issue #18 CI4): an empty or unrecognised
+      # registry, or a malformed DEF heading, exits 1; Affects matches
+      # ignoring case; a heading may carry trailing text. Its tests run first.
+      - name: Test the vendored defect gate
+        run: python3 -m unittest discover -s tests/ci -p 'test_*.py' -v
+
       - name: Defect gate (RULE-012)
         env:
           DEFECT_PAK_NAME: ""   # leave empty to derive from the repo name
+          GH_TOKEN: ${{ github.token }}   # public-repo API read only
+          REGISTRY_REPO: sentania-labs/vcf-content-factory
+          REGISTRY_PATH: knowledge/context/defects.md
         run: |
           set -euo pipefail
           NAME="${DEFECT_PAK_NAME:-}"
@@ -105,8 +125,15 @@ jobs:
             echo "::error::ci/defect_gate.py (vendored gate script) is missing — re-vendor it from the factory. Refusing to fetch+execute remote code." >&2
             exit 1
           fi
-          # DATA only (inert markdown), fetched live from factory main:
-          curl -fsSL "https://raw.githubusercontent.com/sentania-labs/vcf-content-factory/main/knowledge/context/defects.md" -o defects.md
+          # DATA only (inert markdown), the live version on factory main,
+          # fetched at the exact commit that is logged:
+          REG_SHA="$(gh api "repos/${REGISTRY_REPO}/commits?sha=main&path=${REGISTRY_PATH}&per_page=1" --jq '.[0].sha')"
+          if ! printf '%s' "$REG_SHA" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::Could not resolve the defect registry commit on ${REGISTRY_REPO} main (got '${REG_SHA}'). Failing closed." >&2
+            exit 1
+          fi
+          curl -fsSL "https://raw.githubusercontent.com/${REGISTRY_REPO}/${REG_SHA}/${REGISTRY_PATH}" -o defects.md
+          echo "Defect registry: ${REGISTRY_REPO}@${REG_SHA}:${REGISTRY_PATH}"
           echo "Gating pak '$NAME' against the live factory defect registry (vendored gate)..."
           python3 ci/defect_gate.py --pak "$NAME" --registry defects.md
           # exit 0 = clear; 2 = blocked (defect lines printed above); 1 = bad registry.
