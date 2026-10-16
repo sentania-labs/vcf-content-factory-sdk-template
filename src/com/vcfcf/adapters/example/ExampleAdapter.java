@@ -244,16 +244,12 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
             try {
                 ExampleApiClient testApi = new ExampleApiClient(testHttp,
                         componentLogger(ExampleApiClient.class));
-                SimpleJson items = testApi.listItems();
-                SimpleJson data = items.get("data");
-                if (data.isNull() || !data.isList()) {
-                    // Unreadable, not "empty" — fail loud. A success-shaped but
-                    // data-free payload must NOT pass the test.
-                    throw new IOException("Remote /api/items returned a 200 with no "
-                            + "readable 'data' list");
-                }
+                // The SAME parse the collection cycle uses, so Test Connection
+                // cannot pass a payload every cycle would then reject (no
+                // 'data' list, or rows with no id after a schema change).
+                Snapshot snap = parseSnapshot(testApi.listItems());
                 logInfo("Test OK: connected to " + testCfg.host + ", "
-                        + data.size() + " item(s)");
+                        + snap.byId.size() + " item(s)");
             } finally {
                 testHttp.discard();
             }
@@ -450,15 +446,26 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
             }
             throw new InterruptedException("discarded");
         }
-        SimpleJson items = client.listItems();
+        return parseSnapshot(client.listItems());
+    }
+
+    /**
+     * Validate and index one {@code /api/items} payload. The single parse
+     * shared by the collection cycle ({@link #fetchSnapshot}) and Test
+     * Connection ({@link #getTester}), so the test can never pass a payload
+     * the cycle rejects.
+     *
+     * @throws IOException when there is no readable {@code data} list, or a
+     *         non-empty list has no item ids at all (schema drift, see
+     *         {@link ItemIndex#byId}); an occasional id-less row is skipped
+     */
+    private static Snapshot parseSnapshot(SimpleJson items) throws IOException {
         SimpleJson data = items.get("data");
         if (data.isNull() || !data.isList()) {
             throw new IOException("Remote /api/items returned a 200 payload with no "
                     + "readable 'data' list, treating as unreadable (no sentinel "
                     + "metrics published)");
         }
-        // Skips an id-less row, but throws when a non-empty list has no ids at
-        // all (schema drift): see ItemIndex.byId.
         return new Snapshot(ItemIndex.byId(data.asList(),
                 item -> item.get("id").asString(), "Remote /api/items"));
     }

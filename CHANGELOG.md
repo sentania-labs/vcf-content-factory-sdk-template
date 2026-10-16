@@ -93,6 +93,11 @@
   read (resources go ERROR) instead of discovering only World and leaving
   every resource without data; an occasional id-less row is still skipped.
   New `ItemIndex` helper (peer review, #9).
+- fix(adapter): Test Connection validates `/api/items` through the same
+  `parseSnapshot` as the collection cycle, so it fails with the same
+  message (no readable `data` list, or a non-empty list with no item ids)
+  instead of reporting "Test OK" for a payload every cycle rejects (Codex
+  P2 on PR #21, #9).
 
 ## 0.1.0.1 (2026-06-10)
 
