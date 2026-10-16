@@ -43,6 +43,15 @@
 - fix(adapter): `ExampleConfig.password` is private, read only through a
   package-private `password()` used by `buildHttpClient`, and `toString()`
   prints host, port, username, allowInsecure and `password=***` (#15).
+- docs: correction to the 0.1.0.1 entry, which says the workflow fetches the
+  SDK jar "via `SDK_RUNTIME_TOKEN`": it uses the `SDK_RUNTIME_SSH_KEY` deploy
+  key (a shallow clone of the private sdk-runtime repo); the PAT is retired
+  (#17).
+- docs: README says CI clones the sdk-runtime repo (not a release), pins the
+  buildkit download to a full `sdk-buildkit-vX.Y.Z` tag with a `sha256sum -c`
+  step, and says the Broadcom jar belongs in a private repo only, never a
+  workflow artifact; `docs/installing.md` states the `false` TLS default
+  (#17). README lists the new helper classes and tests.
 
 ## 0.1.0.1 (2026-06-10)
 
