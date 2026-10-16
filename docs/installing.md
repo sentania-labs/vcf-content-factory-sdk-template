@@ -70,7 +70,7 @@ in sync with your real config fields (regenerate the docset after changing
 |-------|-----|----------|---------|-------|
 | Host / IP Address | `host` | Yes | — | Target hostname or IP. |
 | Port (HTTPS) | `port` | No | 443 | API port. |
-| Allow Insecure SSL | `allowInsecure` | No | false | Only the exact value `true` disables certificate validation; blank or any other value keeps it on. |
+| Allow Insecure SSL | `allowInsecure` | No | false | Only `true` (any letter case, no surrounding spaces) disables certificate validation; blank or any other value keeps it on. |
 
 ## Step-by-Step Installation
 

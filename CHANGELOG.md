@@ -4,7 +4,8 @@
 
 - fix(adapter): `allowInsecure` now defaults to `false` in `describe.xml`, so
   a new instance validates the target certificate (#8). The parse stays
-  strict (only `true` turns validation off) and configure logs one WARN while
+  strict (only `true`, in any letter case and with no surrounding spaces,
+  turns validation off) and configure logs one WARN while
   it is off. **Upgrade note:** an existing instance keeps its stored value; an
   instance saved with the build 1 default of `true` still skips validation
   until it is edited and set to `false`.
