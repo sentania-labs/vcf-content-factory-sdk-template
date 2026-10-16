@@ -33,6 +33,13 @@
   and fails with `IOException` past it, without buffering the rest; non-200
   bodies are discarded unread. `ExampleApiClient.get()` rejects a 200 with a
   non-JSON `Content-Type` (for example an HTML proxy page) before parsing.
+- fix(adapter): `ExampleConfig` validates host and port (#16). The host must
+  be a bare hostname, IPv4 address or bracketed IPv6 address (no `/ @ ? #`,
+  port or whitespace) and the port a number from 1 to 65535; a bad value
+  throws an `IllegalArgumentException` naming the field, which Test
+  Connection shows. The base URL is built with `new URI(...)`. A configure
+  with an invalid value builds no client and every read fails with that
+  message (ERROR) until the instance is edited. `port` is now an `int`.
 
 ## 0.1.0.1 (2026-06-10)
 

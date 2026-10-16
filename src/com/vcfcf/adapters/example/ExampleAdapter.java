@@ -92,6 +92,13 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
      */
     private final CycleCache<Snapshot> snapshots = new CycleCache<>();
 
+    /**
+     * Why the last configure built no client (an invalid host or port), or
+     * {@code null}. Every read this cycle then fails with it (ERROR) until
+     * the instance is edited.
+     */
+    private volatile String configError;
+
     // -----------------------------------------------------------------------
     // Constructors — keyed, per the framework contract. The no-arg form is hit
     // during controller-side describe (no platform injection yet); the two-arg
@@ -119,7 +126,20 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
 
     @Override
     protected void configureAdapter(ResourceStatus status, ResourceConfig rc) {
-        ExampleConfig cfg = buildConfig(rc);
+        ExampleConfig cfg;
+        try {
+            cfg = buildConfig(rc);
+        } catch (IllegalArgumentException e) {
+            // Invalid host or port (ExampleConfig validates them). Build no
+            // client; every read fails with this message until the instance
+            // is edited, and Test Connection shows the same message.
+            this.api = null;
+            this.configError = e.getMessage();
+            snapshots.beginCycle();
+            logError("ExampleAdapter configuration is invalid: " + e.getMessage(), e);
+            return;
+        }
+        this.configError = null;
         this.config = cfg;
         this.httpClient = buildHttpClient(cfg);
         this.api = new ExampleApiClient(this.httpClient,
@@ -375,6 +395,11 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
         // (InterruptedException) instead of failing with an NPE.
         ExampleApiClient client = this.api;
         if (client == null) {
+            String invalid = this.configError;
+            if (invalid != null) {
+                throw new IllegalStateException("Adapter instance configuration "
+                        + "is invalid: " + invalid);
+            }
             throw new InterruptedException("discarded");
         }
         SimpleJson items = client.listItems();
