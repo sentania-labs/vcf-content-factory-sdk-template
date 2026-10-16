@@ -1,6 +1,5 @@
 package com.vcfcf.adapters.example;
 
-import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpResponse;
@@ -8,14 +7,14 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Flow;
 
 /**
- * Issue #12: a body under the cap is read whole, a body over the cap fails
- * with IOException and cancels the transfer (also when Content-Length says
- * so up front), a non-200 body is cancelled unread, and only JSON content types
- * pass. Run from the repo root (ci/run_java_tests.sh).
+ * Issue #12: a body under the cap is read whole; a body over the cap is
+ * marked over the cap (not failed, so not retried) and cancels the
+ * transfer, also when Content-Length says so up front; a non-200 body is
+ * cancelled unread; and only JSON content types pass. Run from the repo
+ * root (ci/run_java_tests.sh).
  */
 public final class BoundedBodyTest {
 
@@ -56,25 +55,27 @@ public final class BoundedBodyTest {
     }
 
     static void underCapReadWhole() throws Exception {
-        HttpResponse.BodySubscriber<String> s =
+        HttpResponse.BodySubscriber<BoundedBody.Body> s =
                 new BoundedBody(10).apply(info(200, Map.of()));
         Sub sub = new Sub();
         s.onSubscribe(sub);
         s.onNext(bytes("{\"a\":"));
         s.onNext(bytes("1}"));
         s.onComplete();
-        T.eq("{\"a\":1}", s.getBody().toCompletableFuture().get(), "body read whole");
+        BoundedBody.Body body = s.getBody().toCompletableFuture().get();
+        T.check(!body.overCap, "under the cap");
+        T.eq("{\"a\":1}", body.text, "body read whole");
         T.check(!sub.cancelled, "not cancelled");
         // exactly at the cap is allowed
         s = new BoundedBody(4).apply(info(200, Map.of()));
         s.onSubscribe(new Sub());
         s.onNext(bytes("abcd"));
         s.onComplete();
-        T.eq("abcd", s.getBody().toCompletableFuture().get(), "exactly the cap");
+        T.eq("abcd", s.getBody().toCompletableFuture().get().text, "exactly the cap");
     }
 
     static void overCapFailsAndCancels() throws Exception {
-        HttpResponse.BodySubscriber<String> s =
+        HttpResponse.BodySubscriber<BoundedBody.Body> s =
                 new BoundedBody(4).apply(info(200, Map.of()));
         Sub sub = new Sub();
         s.onSubscribe(sub);
@@ -82,16 +83,16 @@ public final class BoundedBodyTest {
         s.onNext(bytes("de"));
         s.onNext(bytes("more"));   // ignored after the failure
         s.onComplete();            // ignored after the failure
-        expectIoFailure(s, "over the cap");
+        expectOverCap(s, "over the cap");
         T.check(sub.cancelled, "the transfer is cancelled");
     }
 
     static void declaredLengthOverCapFailsUnread() throws Exception {
-        HttpResponse.BodySubscriber<String> s = new BoundedBody(4).apply(
+        HttpResponse.BodySubscriber<BoundedBody.Body> s = new BoundedBody(4).apply(
                 info(200, Map.of("Content-Length", List.of("5000000000"))));
         Sub sub = new Sub();
         s.onSubscribe(sub);
-        expectIoFailure(s, "declared length over the cap");
+        expectOverCap(s, "declared length over the cap");
         T.check(sub.cancelled, "cancelled before reading");
         T.eq(0L, sub.requested, "no byte requested");
     }
@@ -99,7 +100,7 @@ public final class BoundedBodyTest {
     /** Review W1: a non-200 body is cancelled unread, not drained. */
     static void nonOkBodyDiscarded() throws Exception {
         for (int status : new int[] {500, 503, 401, 302}) {
-            HttpResponse.BodySubscriber<String> s =
+            HttpResponse.BodySubscriber<BoundedBody.Body> s =
                     new BoundedBody(4).apply(info(status, Map.of()));
             Sub sub = new Sub();
             s.onSubscribe(sub);
@@ -126,14 +127,19 @@ public final class BoundedBodyTest {
         }
     }
 
-    static void expectIoFailure(HttpResponse.BodySubscriber<String> s, String what)
-            throws InterruptedException {
-        try {
-            s.getBody().toCompletableFuture().get();
-            throw new AssertionError(what + ": must fail");
-        } catch (ExecutionException e) {
-            T.check(e.getCause() instanceof IOException,
-                    what + ": fails with IOException, got " + e.getCause());
-        }
+    /**
+     * Over the cap completes normally with the marker (never exceptionally):
+     * a failed body would become an IOException from send(), which the
+     * framework RetryPolicy retries, fetching the oversized body again.
+     */
+    static void expectOverCap(HttpResponse.BodySubscriber<BoundedBody.Body> s,
+            String what) throws Exception {
+        java.util.concurrent.CompletableFuture<BoundedBody.Body> f =
+                s.getBody().toCompletableFuture();
+        T.check(f.isDone() && !f.isCompletedExceptionally(),
+                what + ": completes normally, so the send is not retried");
+        BoundedBody.Body b = f.get();
+        T.check(b.overCap, what + ": marked over the cap");
+        T.eq(null, b.text, what + ": no text kept");
     }
 }

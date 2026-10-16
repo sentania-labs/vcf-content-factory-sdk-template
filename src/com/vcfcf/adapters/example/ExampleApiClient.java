@@ -25,7 +25,8 @@ import java.net.http.HttpResponse;
  * a redacted path — never a request body, header, or credential value.
  *
  * <p><b>Bounded reads.</b> Every body goes through {@link BoundedBody}: at most
- * {@link BoundedBody#DEFAULT_MAX_BYTES} is buffered, and a 200 that is not JSON
+ * {@link BoundedBody#DEFAULT_MAX_BYTES} is buffered (an oversized body fails
+ * once, not once per retry), and a 200 that is not JSON
  * (a proxy or captive-portal page, for example) is rejected before parsing.
  */
 public final class ExampleApiClient {
@@ -46,7 +47,7 @@ public final class ExampleApiClient {
     // --- HTTP ---
 
     private SimpleJson get(String path) throws IOException, InterruptedException {
-        HttpResponse<String> resp = http.get(path,
+        HttpResponse<BoundedBody.Body> resp = http.get(path,
                 new BoundedBody(BoundedBody.DEFAULT_MAX_BYTES));
         if (resp.statusCode() != 200) {
             // Status + redacted path only — never echo body/headers. // REDACT-SECRET
@@ -60,7 +61,14 @@ public final class ExampleApiClient {
             throw new IOException("GET " + redact(path) + " returned Content-Type "
                     + type.split(";", 2)[0].trim() + ", expected JSON");
         }
-        return SimpleJson.parse(resp.body());
+        // Thrown here, after the framework's retry loop, so an oversized body
+        // is fetched once, not once per retry (see BoundedBody).
+        BoundedBody.Body body = resp.body();
+        if (body == null || body.overCap) {
+            throw new IOException("GET " + redact(path) + " returned a body over the "
+                    + BoundedBody.DEFAULT_MAX_BYTES + "-byte cap; not read");
+        }
+        return SimpleJson.parse(body.text);
     }
 
     /**
