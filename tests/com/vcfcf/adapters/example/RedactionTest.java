@@ -49,6 +49,8 @@ public final class RedactionTest {
             {"[S3cret]", null},
             {"nas.lab", "S3cret"},
             {"nas.lab", "S3cret:443"},
+            {"nas.lab", "987654"},   // an all-digit PIN, out of port range
+            {"nas.lab", "0"},
         };
         for (String[] c : cases) {
             try {
@@ -57,7 +59,10 @@ public final class RedactionTest {
             } catch (IllegalArgumentException e) {
                 T.check(!e.getMessage().contains("S3cret")
                         && !e.getMessage().contains("Hunter2")
-                        && !e.getMessage().contains("p4ss"),
+                        && !e.getMessage().contains("p4ss")
+                        && !e.getMessage().contains("987654")
+                        && (c[1] == null || c[1].length() < 3
+                                || !e.getMessage().contains(c[1])),
                         "message must not echo the credential: " + e.getMessage());
             }
         }

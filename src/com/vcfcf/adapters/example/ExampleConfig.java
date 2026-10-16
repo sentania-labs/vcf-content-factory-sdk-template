@@ -30,8 +30,9 @@ import java.util.regex.Pattern;
  * are logged on configure, on every read of every cycle, and shown in Test
  * Connection. So no host message ever quotes the host: a value that passes
  * one check can still be a password ({@code Hunter2!pw}), and the operator
- * knows what they typed. Each message names the rule instead. Port is quoted
- * only when it is plain digits. // REDACT-SECRET
+ * knows what they typed. Each message names the rule instead. The same goes
+ * for the port: an all-digit PIN pasted there is not quoted either. No
+ * rejected value is ever echoed. // REDACT-SECRET
  */
 public final class ExampleConfig {
 
@@ -201,10 +202,9 @@ public final class ExampleConfig {
             n = -1;
         }
         if (n < 1 || n > 65535) {
-            // Quote it only when it is plain digits. // REDACT-SECRET
-            String shown = p.matches("\\d{1,10}") ? " '" + p + "'" : "";
-            throw new IllegalArgumentException("Port" + shown
-                    + " must be a number from 1 to 65535");
+            // Never quoted, not even digits (a PIN). // REDACT-SECRET
+            throw new IllegalArgumentException("Port must be a number from 1 "
+                    + "to 65535");
         }
         return n;
     }

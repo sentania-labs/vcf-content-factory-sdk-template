@@ -56,10 +56,11 @@
   step, and says the Broadcom jar belongs in a private repo only, never a
   workflow artifact; `docs/installing.md` states the `false` TLS default
   (#17). README lists the new helper classes and tests.
-- fix(adapter): host validation messages never quote the host, and port
-  messages quote the port only when it is plain digits; they name the rule
-  broken (for example "must not contain a user name or password ('@')"), so a credential pasted into
-  the Host field is not logged every cycle or shown in Test Connection
+- fix(adapter): no host or port validation message ever echoes the rejected
+  value, not even an all-digit port (a PIN pasted there); each names the rule
+  broken (for example "must not contain a user name or password ('@')"), so a
+  credential pasted into Host or Port is not logged every cycle or shown in
+  Test Connection
   (review B1, #16). A host whose last label is all digits ("999", "10.1") is
   rejected unless it is a full dotted IPv4 address (review N6).
 - fix(adapter): the cycle snapshot is never served once it is half a
