@@ -1,6 +1,6 @@
 # VCF Content Factory Example Adapter — Reference
 
-Generated from `describe.xml` and `resources.properties` for build 0.1.0.1.
+Generated from `describe.xml` and `resources.properties` for build 0.0.0.2.
 
 ## Adapter
 

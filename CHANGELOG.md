@@ -77,6 +77,9 @@
   can fail, so a configure that throws never leaves reads going through the
   old, already-discarded HTTP client; a client that cannot be built fails
   every read ERROR with a reason, like an invalid host or port (review N5).
+- docs: commit the generated dev-preview stamps (`0.0.0.2`) in
+  `docs/README.md`, `docs/inventory-tree.md` and `REFERENCE.md`, as the
+  children do; they move to the release stamp at release (review N7).
 
 ## 0.1.0.1 (2026-06-10)
 
