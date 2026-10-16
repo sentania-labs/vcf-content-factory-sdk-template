@@ -196,14 +196,27 @@ jobs:
             --output dist
           ls -l dist/*.pak
 
+      # Gate on what pak-compare proves, not on free text (issue #18 CI3).
+      # Since buildkit 1.0.11 (factory #181) pak-compare EXITS non-zero when
+      # the closest reference has any BLOCKING finding or the comparison
+      # could not run, and prints exactly one verdict line. Two conditions,
+      # both required:
+      #  1. its exit status is 0 (pipefail carries it through tee), and
+      #  2. the anchored verdict line `pak-compare gate: PASS (0 BLOCKING ...`
+      #     is present, so a kit too old to have the exit code (it would exit
+      #     0 on BLOCKING) cannot pass by default.
       - name: Gate on pak-compare (zero BLOCKING)
         run: |
           set -euo pipefail
+          rc=0
           PYTHONPATH=_kit python3 -m sdk_buildkit pak-compare dist/*.pak \
-            --reference-dir _kit/sdk_buildkit/reference_paks | tee compare.txt
-          if grep -qiE '\bBLOCKING\b' compare.txt && \
-             ! grep -qiE '0 +BLOCKING|BLOCKING: *0' compare.txt; then
-            echo "::error::pak-compare reported BLOCKING findings — failing the release."
+            --reference-dir _kit/sdk_buildkit/reference_paks 2>&1 | tee compare.txt || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::pak-compare exited $rc (BLOCKING findings, or the comparison did not run). Failing the release."
+            exit 1
+          fi
+          if ! grep -qE '^pak-compare gate: PASS \(0 BLOCKING ' compare.txt; then
+            echo "::error::pak-compare printed no 'pak-compare gate: PASS (0 BLOCKING' verdict line (buildkit older than 1.0.11?). Failing the release."
             exit 1
           fi
 
