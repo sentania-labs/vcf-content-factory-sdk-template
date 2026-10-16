@@ -119,6 +119,12 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
         // never referenced here. // REDACT-SECRET
         logInfo("ExampleAdapter configured: host=" + cfg.host + " port=" + cfg.port
                 + " allowInsecure=" + cfg.allowInsecure);
+        // One WARN per configure while validation is off, so an insecure
+        // instance stays visible in the log after every edit or restart.
+        String insecure = cfg.insecureWarning();
+        if (insecure != null) {
+            logWarn(insecure);
+        }
     }
 
     private ExampleConfig buildConfig(ResourceConfig rc) {

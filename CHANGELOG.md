@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0.2 (2026-10-16)
+
+- fix(adapter): `allowInsecure` now defaults to `false` in `describe.xml`, so
+  a new instance validates the target certificate (#8). The parse stays
+  strict (only `true` turns validation off) and configure logs one WARN while
+  it is off. **Upgrade note:** an existing instance keeps its stored value; an
+  instance saved with the build 1 default of `true` still skips validation
+  until it is edited and set to `false`.
 ## 0.1.0.1 (2026-06-10)
 
 - feat(framework): modernize the SDK adapter template to framework v2 + C2 pak

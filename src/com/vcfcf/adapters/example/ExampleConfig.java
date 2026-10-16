@@ -36,7 +36,30 @@ public final class ExampleConfig {
         this.port = (port == null || port.isEmpty()) ? "443" : port;
         this.username = username;
         this.password = password; // REDACT-SECRET
-        this.allowInsecure = "true".equalsIgnoreCase(allowInsecure);
+        this.allowInsecure = parseAllowInsecure(allowInsecure);
+    }
+
+    /**
+     * Strict parse (issue #8): only the exact value {@code "true"} (any
+     * letter case, no surrounding spaces) turns certificate validation off.
+     * Anything else, including {@code null}, blank, {@code "yes"} or
+     * {@code " true"}, validates. A missing or mistyped value must never
+     * fall through to insecure, because the connection carries credentials.
+     */
+    static boolean parseAllowInsecure(String raw) {
+        return "true".equalsIgnoreCase(raw);
+    }
+
+    /**
+     * The WARN logged on every configure while certificate validation is
+     * off, or {@code null} when it is on. Address only, no credential.
+     */
+    String insecureWarning() {
+        if (!allowInsecure) return null;
+        return "Allow Insecure SSL is true for " + host + ":" + port
+                + ": the target certificate is not validated, so the credentials "
+                + "go to whatever answers at that address. Set Allow Insecure SSL "
+                + "to false unless this is a lab target you accept that for.";
     }
 
     /** Base URL for the remote API. Carries no secret — safe to log. */

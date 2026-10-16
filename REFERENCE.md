@@ -24,7 +24,7 @@ Generated from `describe.xml` and `resources.properties` for build 0.1.0.1.
 |---|---|---|---|
 | Host / IP Address | `host` | — | Yes |
 | Port (HTTPS) | `port` | 443 | No |
-| Allow Insecure SSL | `allowInsecure` | true | No |
+| Allow Insecure SSL | `allowInsecure` | false | No |
 
 ---
 

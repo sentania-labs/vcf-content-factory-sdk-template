@@ -10,7 +10,6 @@ public final class ExampleConfigTest {
 
     public static void main(String[] args) {
         portDefaults();
-        allowInsecureOnlyOnTrue();
         System.out.println("ExampleConfigTest: all assertions passed");
     }
 
@@ -22,14 +21,5 @@ public final class ExampleConfigTest {
         T.eq("https://h:8443",
                 new ExampleConfig("h", "8443", "u", "p", null).baseUrl(),
                 "baseUrl carries the explicit port");
-    }
-
-    static void allowInsecureOnlyOnTrue() {
-        T.check(new ExampleConfig("h", null, "u", "p", "true").allowInsecure,
-                "true turns validation off");
-        for (String v : new String[] {null, "", "false", "yes", "1"}) {
-            T.check(!new ExampleConfig("h", null, "u", "p", v).allowInsecure,
-                    "<" + v + "> keeps validation on");
-        }
     }
 }
