@@ -59,6 +59,11 @@
   the Host field is not logged every cycle or shown in Test Connection
   (review B1, #16). A host whose last label is all digits ("999", "10.1") is
   rejected unless it is a full dotted IPv4 address (review N6).
+- fix(adapter): the cycle snapshot is never served once it is one collection
+  interval (5 minutes, `COLLECTION_INTERVAL_MS`) old, even if no new cycle
+  began, and the `needsRediscovery` Javadoc and the `beginCycle` call say the
+  snapshot cycle depends on `needsRediscovery()` returning true (review W2,
+  #9).
 
 ## 0.1.0.1 (2026-06-10)
 

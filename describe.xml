@@ -36,6 +36,8 @@
 		<!-- ================================================================ -->
 		<!-- Adapter Instance (type=7): connection configuration              -->
 		<!-- ================================================================ -->
+		<!-- monitoringInterval (minutes) must match COLLECTION_INTERVAL_MS in -->
+		<!-- ExampleAdapter.java (the snapshot's maximum age).                 -->
 		<ResourceKind key="example_adapter" nameKey="5" type="7"
 		              credentialKind="example_credentials"
 		              monitoringInterval="5">

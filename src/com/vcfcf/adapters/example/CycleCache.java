@@ -1,9 +1,11 @@
 package com.vcfcf.adapters.example;
 
+import java.util.function.LongSupplier;
+
 /**
  * One snapshot per collection cycle (issue #9). No VCF Ops SDK and no
  * framework-jar dependency, so the plain-main tests drive it with a
- * counting builder.
+ * counting builder and a fake clock.
  *
  * <p>{@link #beginCycle} marks the top of a cycle and forgets the last
  * result. The first {@link #get} of the cycle runs the builder (the one
@@ -17,12 +19,17 @@ package com.vcfcf.adapters.example;
  * {@link InterruptedException} (Stop Collecting, discard) is never
  * remembered.
  *
+ * <p><b>Maximum age (review W2).</b> A result, snapshot or failure, is also
+ * dropped once it is {@code maxAgeMs} old (counted from when the build
+ * finished), whether or not {@link #beginCycle} ran. This is the safety net
+ * for a caller that stops starting cycles: a snapshot is never served as
+ * this cycle's reading when it is older than one collection interval.
+ *
  * <p>This is the teaching-size version. The children
  * ({@code content/sdk-adapters/unifi} and {@code synology},
  * {@code SnapshotCache}) add what a production pak needs on top: a failure
  * back-off that spans cycles (so a wrong password does not re-login every
- * cycle), a maximum snapshot age for a cycle that never ends, and one WARN
- * per failed build.
+ * cycle) and one WARN per failed build.
  *
  * <p>Thread safety: every method is {@code synchronized}; a build runs
  * under the lock, so only one thread reads the target at a time.
@@ -34,8 +41,24 @@ final class CycleCache<S> {
         S build() throws Exception;
     }
 
+    private final long maxAgeMs;
+    private final LongSupplier clock;
+
     private S value;
     private Exception failure;
+    private long builtAt;
+
+    /**
+     * @param maxAgeMs the oldest result {@link #get} will serve; use the
+     *                 collection interval
+     * @param clock    milliseconds, {@code System::currentTimeMillis} in
+     *                 production
+     */
+    CycleCache(long maxAgeMs, LongSupplier clock) {
+        if (maxAgeMs <= 0) throw new IllegalArgumentException("maxAgeMs must be > 0");
+        this.maxAgeMs = maxAgeMs;
+        this.clock = clock;
+    }
 
     /** Top of a cycle: the next {@link #get} reads the target again. */
     synchronized void beginCycle() {
@@ -44,12 +67,18 @@ final class CycleCache<S> {
     }
 
     /**
-     * This cycle's snapshot, built on the first call of the cycle.
+     * This cycle's snapshot, built on the first call of the cycle, or again
+     * once the last result is {@code maxAgeMs} old.
      *
      * @throws Exception this cycle's build failure, the same instance on
-     *                   every call until the next {@link #beginCycle}
+     *                   every call until the next {@link #beginCycle} or
+     *                   until it is {@code maxAgeMs} old
      */
     synchronized S get(Builder<S> builder) throws Exception {
+        if ((value != null || failure != null)
+                && clock.getAsLong() - builtAt >= maxAgeMs) {
+            beginCycle(); // too old to be this cycle's reading
+        }
         if (value != null) return value;
         if (failure != null) throw failure;
         S built;
@@ -59,8 +88,10 @@ final class CycleCache<S> {
             throw e; // never remembered: the next call may run again
         } catch (Exception e) {
             failure = e;
+            builtAt = clock.getAsLong();
             throw e;
         }
+        builtAt = clock.getAsLong();
         if (built == null) {
             failure = new IllegalStateException("snapshot builder returned null");
             throw failure;

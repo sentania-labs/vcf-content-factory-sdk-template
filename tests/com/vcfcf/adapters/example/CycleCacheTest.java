@@ -15,7 +15,14 @@ public final class CycleCacheTest {
         failureRememberedForItsCycle();
         interruptNotRemembered();
         nullBuildIsAFailure();
+        maxAgeWithoutBeginCycle();
         System.out.println("CycleCacheTest: all assertions passed");
+    }
+
+    static long now = 1_000_000L;
+
+    static CycleCache<String> newCache() {
+        return new CycleCache<>(300_000L, () -> now);
     }
 
     /** Counts builds; fails while {@code fail} is set. */
@@ -32,7 +39,7 @@ public final class CycleCacheTest {
     }
 
     static void servedOncePerCycle() throws Exception {
-        CycleCache<String> cache = new CycleCache<>();
+        CycleCache<String> cache = newCache();
         Counting b = new Counting();
         cache.beginCycle();
         // rediscover plus 50 per-resource collects in one cycle
@@ -47,7 +54,7 @@ public final class CycleCacheTest {
     }
 
     static void failureRememberedForItsCycle() throws Exception {
-        CycleCache<String> cache = new CycleCache<>();
+        CycleCache<String> cache = newCache();
         Counting b = new Counting();
         IOException down = new IOException("target down");
         b.fail = down;
@@ -67,7 +74,7 @@ public final class CycleCacheTest {
     }
 
     static void interruptNotRemembered() throws Exception {
-        CycleCache<String> cache = new CycleCache<>();
+        CycleCache<String> cache = newCache();
         Counting b = new Counting();
         b.fail = new InterruptedException("discarded");
         cache.beginCycle();
@@ -83,7 +90,7 @@ public final class CycleCacheTest {
     }
 
     static void nullBuildIsAFailure() throws Exception {
-        CycleCache<String> cache = new CycleCache<>();
+        CycleCache<String> cache = newCache();
         cache.beginCycle();
         try {
             cache.get(() -> null);
@@ -91,5 +98,34 @@ public final class CycleCacheTest {
         } catch (IllegalStateException expected) {
             // a null build is a failure, not an empty snapshot
         }
+    }
+
+    /**
+     * Review W2: a caller that never calls beginCycle again (for example a
+     * child that made needsRediscovery conditional) is not served a snapshot
+     * older than the maximum age, and a failure expires the same way.
+     */
+    static void maxAgeWithoutBeginCycle() throws Exception {
+        CycleCache<String> cache = newCache();
+        Counting b = new Counting();
+        cache.beginCycle();
+        T.eq("snapshot-1", cache.get(b), "first read");
+        now += 299_999L;
+        T.eq("snapshot-1", cache.get(b), "younger than the maximum age: served");
+        now += 1L;
+        T.eq("snapshot-2", cache.get(b), "at the maximum age: read again, no beginCycle");
+        T.eq(2, b.builds, "one rebuild");
+        b.fail = new java.io.IOException("down");
+        now += 300_000L;
+        try {
+            cache.get(b);
+            throw new AssertionError("must fail");
+        } catch (java.io.IOException expected) {
+            // remembered
+        }
+        b.fail = null;
+        T.eq(3, b.builds, "the failed read counted");
+        now += 300_000L;
+        T.eq("snapshot-4", cache.get(b), "an old failure expires too");
     }
 }

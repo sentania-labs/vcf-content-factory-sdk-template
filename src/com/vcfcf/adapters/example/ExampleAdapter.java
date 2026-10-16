@@ -86,11 +86,20 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
     private volatile ExampleApiClient api;
 
     /**
-     * This cycle's snapshot of the remote API: one read per cycle, shared by
-     * {@code rediscover} and every per-resource {@code collect}. See
-     * {@link CycleCache}.
+     * Collection interval in milliseconds; MUST match
+     * {@code monitoringInterval} (minutes) of the adapter instance kind in
+     * describe.xml. Used as the snapshot's maximum age.
      */
-    private final CycleCache<Snapshot> snapshots = new CycleCache<>();
+    private static final long COLLECTION_INTERVAL_MS = 5L * 60 * 1000;
+
+    /**
+     * This cycle's snapshot of the remote API: one read per cycle, shared by
+     * {@code rediscover} and every per-resource {@code collect}. Never served
+     * once it is one collection interval old, even if no new cycle began.
+     * See {@link CycleCache}.
+     */
+    private final CycleCache<Snapshot> snapshots =
+            new CycleCache<>(COLLECTION_INTERVAL_MS, System::currentTimeMillis);
 
     /**
      * Why the last configure built no client (an invalid host or port), or
@@ -298,6 +307,13 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
              * platform DOES call {@code onCollect()} on cadence; the framework
              * runs {@code rediscover()} at the top of every cycle when this
              * returns true. Returning true makes discovery self-sufficient.
+             *
+             * <p><b>The snapshot depends on this too.</b> {@code rediscover} is
+             * also the top of the snapshot cycle ({@code snapshots.beginCycle()}).
+             * If you ever make this conditional, move {@code beginCycle()} to a
+             * place that runs every cycle, or every cycle that skips rediscover
+             * serves the previous snapshot (until the maximum age drops it) and
+             * stamps its values with the current time.
              */
             @Override
             public boolean needsRediscovery(ExampleConfig cfg) {
@@ -324,6 +340,9 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
                     throws InterruptedException, Exception {
                 // Stop/discard may land between cycles; honor it before any read.
                 if (isAbortRequested()) return;
+                // Top of the snapshot cycle. Runs every cycle only because
+                // needsRediscovery() always returns true; see its Javadoc
+                // before making that conditional.
                 snapshots.beginCycle();
                 logInfo("ExampleAdapter rediscover (collect-path discovery): enumerating");
                 enumerateResources(currentSnapshot(),
