@@ -203,12 +203,22 @@ jobs:
           fi
           KEY_FILE="$RUNNER_TEMP/sdk_runtime_key"
           KNOWN_HOSTS="$RUNNER_TEMP/sdk_runtime_known_hosts"
-          printf '%s\n' "$SDK_RUNTIME_SSH_KEY" > "$KEY_FILE"
+          # Remove the key however this step ends, success or failure.
+          trap 'rm -f "$KEY_FILE"' EXIT
+          ( umask 077; printf '%s\n' "$SDK_RUNTIME_SSH_KEY" > "$KEY_FILE" )
           chmod 600 "$KEY_FILE"
-          ssh-keyscan github.com > "$KNOWN_HOSTS" 2>/dev/null
-          GIT_SSH_COMMAND="ssh -i $KEY_FILE -o IdentitiesOnly=yes -o UserKnownHostsFile=$KNOWN_HOSTS" \
+          # GitHub's published SSH host keys, pinned instead of trusting
+          # whatever ssh-keyscan returns on first use (issue #18 CI5 item).
+          # Source: https://api.github.com/meta, field ssh_keys, as published
+          # on 2026-10-16. If GitHub rotates a key, the clone fails with a
+          # host key error: update these lines from that endpoint.
+          cat > "$KNOWN_HOSTS" <<'HOSTKEYS'
+          github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+          github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
+          github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=
+          HOSTKEYS
+          GIT_SSH_COMMAND="ssh -i $KEY_FILE -o IdentitiesOnly=yes -o UserKnownHostsFile=$KNOWN_HOSTS -o StrictHostKeyChecking=yes" \
             git clone --depth 1 git@github.com:sentania-labs/vcf-content-factory-sdk-runtime.git _sdk_runtime
-          rm -f "$KEY_FILE"
           ls _sdk_runtime/vrops-adapters-sdk-*.jar
 
       - name: Build the .pak (deterministic, headless)
