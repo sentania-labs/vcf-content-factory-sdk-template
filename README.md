@@ -33,6 +33,7 @@ src/com/vcfcf/adapters/example/           # adapter Java source
   ExampleFailures.java                    #   unreachable (DOWN) vs failed (ERROR), cause-chain walk
   ExampleValues.java                      #   numeric-or-absent check behind metricIfPresent
   CycleCache.java                         #   one snapshot per collection cycle
+  ItemIndex.java                          #   id index; throws when a non-empty list has no ids
   BoundedBody.java                        #   response body handler with an 8 MB cap
 tests/com/vcfcf/adapters/example/         # plain-main tests for the helpers above (no SDK jar)
 .github/workflows/build-pak-on-tag.yml    # CI: tag v* -> build .pak -> attach to Release

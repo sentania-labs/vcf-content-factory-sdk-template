@@ -83,6 +83,11 @@
 - docs: commit the generated dev-preview stamps (`0.0.0.2`) in
   `docs/README.md`, `docs/inventory-tree.md` and `REFERENCE.md`, as the
   children do; they move to the release stamp at release (review N7).
+- fix(adapter): a snapshot whose `data` list is non-empty but has no item
+  ids at all (schema drift, for example a renamed id field) now fails the
+  read (resources go ERROR) instead of discovering only World and leaving
+  every resource without data; an occasional id-less row is still skipped.
+  New `ItemIndex` helper (peer review, #9).
 
 ## 0.1.0.1 (2026-06-10)
 

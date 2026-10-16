@@ -24,7 +24,6 @@ import com.integrien.alive.common.util.CommonConstants.ResourceStatusEnum;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -451,13 +450,10 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
                     + "readable 'data' list, treating as unreadable (no sentinel "
                     + "metrics published)");
         }
-        Map<String, SimpleJson> byId = new LinkedHashMap<>();
-        for (SimpleJson item : data.asList()) {
-            String id = item.get("id").asString();
-            if (id == null || id.isEmpty()) continue;
-            byId.putIfAbsent(id, item); // first wins: one resource per id
-        }
-        return new Snapshot(byId);
+        // Skips an id-less row, but throws when a non-empty list has no ids at
+        // all (schema drift): see ItemIndex.byId.
+        return new Snapshot(ItemIndex.byId(data.asList(),
+                item -> item.get("id").asString(), "Remote /api/items"));
     }
 
     private void collectExampleResource(ResourceConfig rc, Snapshot snapshot,
