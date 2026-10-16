@@ -17,6 +17,13 @@
   and numeric (#10). New `metricIfPresent(out, key, SimpleJson)` helper skips
   a missing, null or non-numeric field instead of publishing the `0.0` that
   `SimpleJson.asDouble()` returns for it; a real zero is still published.
+- fix(adapter): one immutable snapshot per collection cycle (#9). `rediscover`
+  starts the cycle and reads `/api/items` once; every `collect` in the cycle
+  reads the same snapshot through a `Map<id, item>` index (was one full-list
+  GET per resource plus a linear scan). A failed read is remembered for the
+  rest of its cycle, so a down target costs one read per cycle. New
+  `CycleCache` helper; the children's `SnapshotCache` is referenced for the
+  production version (cross-cycle back-off, maximum age).
 
 ## 0.1.0.1 (2026-06-10)
 

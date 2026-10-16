@@ -23,7 +23,10 @@ import com.integrien.alive.common.util.CommonConstants.ResourceStatusEnum;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Example Tier 2 SDK adapter — the VCF Content Factory adapter <b>template</b>.
@@ -82,6 +85,13 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
     /** REST client for the remote system. Built in {@link #configureAdapter}. */
     private volatile ExampleApiClient api;
 
+    /**
+     * This cycle's snapshot of the remote API: one read per cycle, shared by
+     * {@code rediscover} and every per-resource {@code collect}. See
+     * {@link CycleCache}.
+     */
+    private final CycleCache<Snapshot> snapshots = new CycleCache<>();
+
     // -----------------------------------------------------------------------
     // Constructors — keyed, per the framework contract. The no-arg form is hit
     // during controller-side describe (no platform injection yet); the two-arg
@@ -114,6 +124,8 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
         this.httpClient = buildHttpClient(cfg);
         this.api = new ExampleApiClient(this.httpClient,
                 componentLogger(ExampleApiClient.class));
+        // A new configuration must not be served the old one's snapshot.
+        snapshots.beginCycle();
 
         // host/port are safe to log; allowInsecure is a lab flag. The password is
         // never referenced here. // REDACT-SECRET
@@ -211,6 +223,7 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
     protected VcfCfDiscoverer<ExampleConfig> getDiscoverer() {
         return (cfg, http, param, dr) -> {
             logInfo("ExampleAdapter discover (onDiscover path): enumerating");
+            snapshots.beginCycle(); // a discovery pass is its own cycle
             enumerateResources(currentSnapshot(), dr::addResource);
         };
     }
@@ -223,19 +236,15 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
      * one method is the cardinal requirement of dual-path discovery — the two
      * paths can never drift.
      */
-    private void enumerateResources(SimpleJson snapshot, ResourceSink sink) {
+    private void enumerateResources(Snapshot snapshot, ResourceSink sink) {
         // World anchor: the traversal entry point, always present.
         sink.accept(rcOf("World", "Example World", "world_id", "example_world"));
 
-        int count = 0;
-        for (SimpleJson item : snapshot.get("data").asList()) {
-            String id = item.get("id").asString();
-            if (id == null || id.isEmpty()) continue;
-            String name = item.get("name").asString(id);
-            sink.accept(rcOf("ExampleResource", name, "id", id));
-            count++;
+        for (Map.Entry<String, SimpleJson> e : snapshot.byId.entrySet()) {
+            String name = e.getValue().get("name").asString(e.getKey());
+            sink.accept(rcOf("ExampleResource", name, "id", e.getKey()));
         }
-        logInfo("Example enumerate: " + count + " ExampleResource(s)");
+        logInfo("Example enumerate: " + snapshot.byId.size() + " ExampleResource(s)");
     }
 
     /** The seam that lets one enumeration body feed both discovery paths. */
@@ -251,7 +260,7 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
     }
 
     // -----------------------------------------------------------------------
-    // getCollector — per-resource collect over a shared snapshot, with
+    // getCollector: per-resource collect over one snapshot per cycle, with
     // collect-path discovery wired in via needsRediscovery/rediscover.
     // -----------------------------------------------------------------------
 
@@ -284,11 +293,16 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
              * before the per-resource collect loop on the first cycle after
              * configure, a fresh (0-resource) instance populates on its first
              * collect.
+             *
+             * <p>It is also the top of the cycle for the snapshot: it forgets
+             * the last cycle's snapshot and reads a fresh one, which every
+             * {@code collect} below then shares.
              */
             @Override
             public void rediscover(ExampleConfig cfg, ManagedHttpClient http,
                     ResourceConfig adapterInst, AdapterBase adapter)
                     throws InterruptedException, Exception {
+                snapshots.beginCycle();
                 logInfo("ExampleAdapter rediscover (collect-path discovery): enumerating");
                 enumerateResources(currentSnapshot(),
                         ExampleAdapter.this::registerNewResource);
@@ -323,35 +337,57 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
     }
 
     /**
-     * Per-cycle snapshot of the remote API.
-     *
-     * <p>In this minimal template the snapshot is a single {@code listItems()}
-     * pull fetched fresh each call. A real adapter with multiple endpoints and
-     * many resources should cache one immutable snapshot per cycle and serve all
-     * per-resource {@code collect()} calls from it — see the {@code Snapshot}
-     * inner class in {@code content/sdk-adapters/unifi}.
+     * One immutable read of the remote API, indexed by item id so each
+     * per-resource {@code collect} is a map lookup, not a scan of the list.
+     * Add a field per endpoint when your adapter reads more than one.
+     */
+    private static final class Snapshot {
+        /** Items by id, in payload order. Unmodifiable. */
+        final Map<String, SimpleJson> byId;
+
+        Snapshot(Map<String, SimpleJson> byId) {
+            this.byId = Collections.unmodifiableMap(byId);
+        }
+    }
+
+    /**
+     * This cycle's snapshot: read on the first call of the cycle (normally
+     * {@code rediscover}), then shared by every {@code collect} in the cycle.
+     */
+    private Snapshot currentSnapshot() throws Exception {
+        return snapshots.get(this::fetchSnapshot);
+    }
+
+    /**
+     * Read the remote API once and index it.
      *
      * <p><b>Loud failure.</b> A REST error, or a success-shaped payload with no
-     * readable {@code data} list, THROWS — the framework then marks the resource
-     * ERROR/DOWN. {@code SimpleJson} is null-tolerant ({@code asDouble()->0.0}),
-     * so without this contract-assert an unreadable response would publish a
-     * healthy-looking but data-free instance.
+     * readable {@code data} list, THROWS, and the framework then marks the
+     * resource ERROR/DOWN. {@code SimpleJson} is null-tolerant
+     * ({@code asDouble()->0.0}), so without this contract-assert an unreadable
+     * response would publish a healthy-looking but data-free instance.
      */
-    private SimpleJson currentSnapshot() throws Exception {
+    private Snapshot fetchSnapshot() throws Exception {
         SimpleJson items = api.listItems();
         SimpleJson data = items.get("data");
         if (data.isNull() || !data.isList()) {
             throw new IOException("Remote /api/items returned a 200 payload with no "
-                    + "readable 'data' list — treating as unreadable (no sentinel "
+                    + "readable 'data' list, treating as unreadable (no sentinel "
                     + "metrics published)");
         }
-        return items;
+        Map<String, SimpleJson> byId = new LinkedHashMap<>();
+        for (SimpleJson item : data.asList()) {
+            String id = item.get("id").asString();
+            if (id == null || id.isEmpty()) continue;
+            byId.putIfAbsent(id, item); // first wins: one resource per id
+        }
+        return new Snapshot(byId);
     }
 
-    private void collectExampleResource(ResourceConfig rc, SimpleJson snapshot,
+    private void collectExampleResource(ResourceConfig rc, Snapshot snapshot,
             List<MetricData> out) {
         String id = getIdentifier(rc, "id");
-        SimpleJson item = findItem(snapshot, id);
+        SimpleJson item = id == null ? null : snapshot.byId.get(id);
         if (item == null) {
             // The resource was discovered but is absent this cycle. Skip it (the
             // framework will leave it without fresh data) — do NOT publish a
@@ -364,14 +400,6 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
         // chart, never a published 0.0 that looks like a real reading.
         metricIfPresent(out, "Status|value", item.get("value"));
         prop(out, "Configuration|name", item.get("name").asString(""));
-    }
-
-    private static SimpleJson findItem(SimpleJson snapshot, String id) {
-        if (id == null) return null;
-        for (SimpleJson item : snapshot.get("data").asList()) {
-            if (id.equals(item.get("id").asString())) return item;
-        }
-        return null;
     }
 
     // -----------------------------------------------------------------------
