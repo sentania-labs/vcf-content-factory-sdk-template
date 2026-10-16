@@ -28,9 +28,10 @@ import java.util.regex.Pattern;
  * <p><b>Messages never echo a rejected value.</b> An operator may paste
  * {@code https://user:password@host} into the Host field, and these messages
  * are logged on configure, on every read of every cycle, and shown in Test
- * Connection. A value is quoted only after it has passed the character check
- * (letters, digits, hyphens, dots, or hex digits and colons inside brackets),
- * so it cannot carry a user name or password. // REDACT-SECRET
+ * Connection. So no host message ever quotes the host: a value that passes
+ * one check can still be a password ({@code Hunter2!pw}), and the operator
+ * knows what they typed. Each message names the rule instead. Port is quoted
+ * only when it is plain digits. // REDACT-SECRET
  */
 public final class ExampleConfig {
 
@@ -142,22 +143,22 @@ public final class ExampleConfig {
         if (IPV4.matcher(h).matches()) {
             for (String part : h.split("\\.")) {
                 if (Integer.parseInt(part) > 255) {
-                    throw new IllegalArgumentException("Host / IP Address '" + h
-                            + "' is not a valid IPv4 address");
+                    throw new IllegalArgumentException("Host / IP Address is "
+                            + "not a valid IPv4 address (each part 0 to 255)");
                 }
             }
             return h;
         }
         if (!HOSTNAME.matcher(h).matches()) {
-            throw new IllegalArgumentException("Host / IP Address '" + h
-                    + "' is not a valid hostname (letters, digits, hyphens and dots)");
+            throw new IllegalArgumentException("Host / IP Address is not a "
+                    + "valid hostname (letters, digits, inner hyphens and dots)");
         }
         // "999" or "10.1" would be read as a shorthand IPv4 literal (0.0.3.231,
         // 10.0.0.1), not the hostname the operator meant.
         String lastLabel = h.substring(h.lastIndexOf('.') + 1);
         if (lastLabel.chars().allMatch(Character::isDigit)) {
-            throw new IllegalArgumentException("Host / IP Address '" + h
-                    + "' is neither a hostname nor a full dotted IPv4 address "
+            throw new IllegalArgumentException("Host / IP Address is neither a "
+                    + "hostname nor a full dotted IPv4 address "
                     + "(a.b.c.d)");
         }
         return h;
@@ -212,9 +213,9 @@ public final class ExampleConfig {
         try {
             return new URI("https", null, host, port, null, null, null).toString();
         } catch (URISyntaxException e) {
-            // host has passed the character check here, so quoting it is safe.
-            throw new IllegalArgumentException("Host / IP Address '" + host
-                    + "' does not form a valid URL: " + e.getReason());
+            // Not quoted, like every host message. // REDACT-SECRET
+            throw new IllegalArgumentException("Host / IP Address does not form "
+                    + "a valid URL");
         }
     }
 }

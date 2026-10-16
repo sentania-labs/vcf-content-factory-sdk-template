@@ -42,6 +42,11 @@ public final class RedactionTest {
             {"admin@S3cret", null},
             {"[admin:S3cret@fd00::10]", null},
             {"S3cret word", null},
+            {"Hunter2!pw", null},
+            {"p4ss$word", null},
+            {"S3cret-", null},
+            {"S3cret.999", null},
+            {"[S3cret]", null},
             {"nas.lab", "S3cret"},
             {"nas.lab", "S3cret:443"},
         };
@@ -50,7 +55,9 @@ public final class RedactionTest {
                 new ExampleConfig(c[0], c[1], "u", "p", null);
                 throw new AssertionError("must be rejected: host/port case " + c[0]);
             } catch (IllegalArgumentException e) {
-                T.check(!e.getMessage().contains("S3cret"),
+                T.check(!e.getMessage().contains("S3cret")
+                        && !e.getMessage().contains("Hunter2")
+                        && !e.getMessage().contains("p4ss"),
                         "message must not echo the credential: " + e.getMessage());
             }
         }

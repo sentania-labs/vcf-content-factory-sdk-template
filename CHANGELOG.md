@@ -54,8 +54,9 @@
   step, and says the Broadcom jar belongs in a private repo only, never a
   workflow artifact; `docs/installing.md` states the `false` TLS default
   (#17). README lists the new helper classes and tests.
-- fix(adapter): host and port validation messages never quote a value that
-  failed the character check; they name the rule it broke (for example "must
+- fix(adapter): host validation messages never quote the host, and port
+  messages quote the port only when it is plain digits; they name the rule
+  broken (for example "must
   not contain a user name or password ('@')"), so a credential pasted into
   the Host field is not logged every cycle or shown in Test Connection
   (review B1, #16). A host whose last label is all digits ("999", "10.1") is
