@@ -338,7 +338,10 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
             public void rediscover(ExampleConfig cfg, ManagedHttpClient http,
                     ResourceConfig adapterInst, AdapterBase adapter)
                     throws InterruptedException, Exception {
-                // Stop/discard may land between cycles; honor it before any read.
+                // Catches only a stop or discard that lands in the moment after
+                // onCollect starts: the framework clears the abort flag as the
+                // first step of every onCollect, so this is not a guard against
+                // a stop that came between cycles.
                 if (isAbortRequested()) return;
                 // Top of the snapshot cycle. Runs every cycle only because
                 // needsRediscovery() always returns true; see its Javadoc
@@ -442,9 +445,11 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
         String id = getIdentifier(rc, "id");
         SimpleJson item = id == null ? null : snapshot.byId.get(id);
         if (item == null) {
-            // The resource was discovered but is absent this cycle. Skip it (the
-            // framework will leave it without fresh data) — do NOT publish a
-            // zero. Absence is not a measured value.
+            // The resource was discovered but is absent this cycle. Publish
+            // nothing for it: absence is not a measured value, so no zero and
+            // no empty string. Note that collect() returning normally still
+            // makes the framework mark the resource DATA_RECEIVING; throw here
+            // instead if your pak should show a vanished object as ERROR.
             logWarn("collect: item " + id + " absent from snapshot");
             return;
         }
@@ -452,7 +457,7 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
         // metricIfPresent skips a missing or non-numeric field: a gap in the
         // chart, never a published 0.0 that looks like a real reading.
         metricIfPresent(out, "Status|value", item.get("value"));
-        prop(out, "Configuration|name", item.get("name").asString(""));
+        prop(out, "Configuration|name", item.get("name").asString());
     }
 
     // -----------------------------------------------------------------------
@@ -462,7 +467,8 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
     //   metric() -> numeric  (new MetricKey(key), isProperty=false)
     //   prop()   -> string property (new MetricKey(true, key)) — REQUIRED for
     //               strings; the platform silently discards string values on a
-    //               non-property MetricKey.
+    //               non-property MetricKey. A null (absent) value is skipped,
+    //               never published as "".
     // -----------------------------------------------------------------------
 
     /**
@@ -487,8 +493,9 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
     }
 
     private static void prop(List<MetricData> out, String key, String value) {
+        if (value == null) return; // absent: skip, never an "" sentinel
         out.add(new MetricData(new MetricKey(true, key),
-                System.currentTimeMillis(), value != null ? value : ""));
+                System.currentTimeMillis(), value));
     }
 
     // -----------------------------------------------------------------------

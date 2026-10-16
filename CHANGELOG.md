@@ -68,6 +68,11 @@
 - fix(adapter): `metricIfPresent` accepts plain decimal numbers only; Java-only
   forms such as `"42d"`, `"1f"` or `"0x1p3"` are skipped like any other
   non-number (review N1, #10).
+- fix(adapter): `prop()` skips an absent (null) value instead of publishing
+  `""`, so a missing item name is a gap, not an empty-string sentinel. Two
+  comments corrected: the `rediscover` abort check only catches a stop in the
+  moment after `onCollect` starts, and an item absent from the snapshot is
+  still marked DATA_RECEIVING by the framework (review N3, N4).
 
 ## 0.1.0.1 (2026-06-10)
 
