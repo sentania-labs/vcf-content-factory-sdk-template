@@ -313,11 +313,11 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
             @Override
             public ResourceStatusEnum mapCollectException(Exception e) {
                 // Distinguish unreachable (DOWN) from reachable-but-failed (ERROR)
-                // so operators see the right state.
-                if (e instanceof java.net.ConnectException) {
-                    return ResourceStatusEnum.RESOURCE_STATUS_DOWN;
-                }
-                return ResourceStatusEnum.RESOURCE_STATUS_ERROR;
+                // so operators see the right state. Walks the cause chain, so a
+                // failure wrapped by the HTTP or retry layer still maps to DOWN.
+                return ExampleFailures.isUnreachable(e)
+                        ? ResourceStatusEnum.RESOURCE_STATUS_DOWN
+                        : ResourceStatusEnum.RESOURCE_STATUS_ERROR;
             }
         };
     }

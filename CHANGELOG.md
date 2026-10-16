@@ -8,6 +8,12 @@
   it is off. **Upgrade note:** an existing instance keeps its stored value; an
   instance saved with the build 1 default of `true` still skips validation
   until it is edited and set to `false`.
+- fix(adapter): `mapCollectException` walks the cause chain and maps
+  `ConnectException`, `UnknownHostException`, `NoRouteToHostException`,
+  `HttpConnectTimeoutException`, `HttpTimeoutException` and
+  `SocketTimeoutException` to DOWN, wrapped or not (#13). New
+  `ExampleFailures` helper, same shape as the UniFi and Synology ones.
+
 ## 0.1.0.1 (2026-06-10)
 
 - feat(framework): modernize the SDK adapter template to framework v2 + C2 pak
