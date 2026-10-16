@@ -80,6 +80,15 @@ class GateTest(unittest.TestCase):
         p = self.write(registry(entry(1, "unifi")) + "\n### DEFECTS ELSEWHERE\n\nprose\n")
         self.assertEqual(defect_gate.gate_pak("template", p), [])
 
+    def test_multi_token_affects_fails_closed(self):
+        for affects in ("template (also unifi)", "`template`", "template, unifi",
+                        "template,unifi"):
+            with self.subTest(affects=affects):
+                p = self.write(registry(entry(1, "unifi"), entry(2, affects)))
+                with self.assertRaises(defect_gate.DefectRegistryError):
+                    defect_gate.gate_pak("template", p)
+                self.assertEqual(self.run_cli(p, "template"), 1)
+
     # --- case-insensitive Affects -----------------------------------------
 
     def test_affects_case_insensitive(self):

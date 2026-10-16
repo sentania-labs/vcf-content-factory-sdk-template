@@ -20,6 +20,8 @@ load_registry(registry_path) -> List[DefectEntry]
         previous entry
       - zero parsed entries (an empty, truncated or reformatted registry is
         unrecognised, never an all-clear)
+      - an ``Affects:`` value that is not one token (whitespace, a comma or a
+        backtick), which would otherwise match no pak and gate nothing
 
 gate_pak(pak_name, registry_path) -> List[DefectEntry]
     Return all open blocking defects whose ``Affects:`` token is ``pak_name``
@@ -122,6 +124,9 @@ _SECTION_RE = re.compile(r"^#{1,4}\s+(DEF-\d+)\b.*$")
 # _SECTION_RE ("### DEF-1O2") is malformed: fail closed.
 _DEF_HEADING_RE = re.compile(r"^#{1,4}\s+DEF-")
 _FIELD_RE = re.compile(r"^-\s+\*\*([^:]+):\*\*\s*(.*)")
+
+# Anything that makes an Affects value more than one bare token.
+_MULTI_TOKEN_RE = re.compile(r"[\s,`]")
 
 # DEF-NNN id format.
 _ID_RE = re.compile(r"^DEF-\d+$")
@@ -291,6 +296,18 @@ def _validate_and_emit(
     summary = fields["Summary"].strip()
     closing_evidence = fields.get("Closing-evidence", "").strip()
     related = fields.get("Related", "").strip()
+
+    # --- Affects must be exactly one scope token ---
+    # "template (also unifi)", "`template`" or "synology, unifi" matches no
+    # pak, so the entry would silently gate nothing. The registry schema
+    # calls such an entry malformed; fail closed (issue #18 CI4 follow-up).
+    if _MULTI_TOKEN_RE.search(affects):
+        raise DefectRegistryError(
+            f"{loc}: Affects {affects!r} is not one scope token (it contains "
+            f"whitespace, a comma or a backtick). Use exactly one pak name, "
+            f"<type>/<slug> or factory:<area>; one issue on N artifacts is N "
+            f"entries."
+        )
 
     # --- Severity validation ---
     if severity not in _VALID_SEVERITIES:
