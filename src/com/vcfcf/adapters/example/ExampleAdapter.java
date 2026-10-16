@@ -23,7 +23,9 @@ import com.integrien.alive.common.util.CommonConstants.ResourceStatusEnum;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Example Tier 2 SDK adapter — the VCF Content Factory adapter <b>template</b>.
@@ -82,6 +84,41 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
     /** REST client for the remote system. Built in {@link #configureAdapter}. */
     private volatile ExampleApiClient api;
 
+    /**
+     * The default collection interval in milliseconds, the
+     * {@code monitoringInterval} (minutes) of the adapter instance kind in
+     * describe.xml; keep the two in step. An operator can change the interval
+     * per instance in the UI, and this constant does not follow, so half of
+     * it is a safety-net maximum age for the snapshot, not a guarantee.
+     */
+    private static final long COLLECTION_INTERVAL_MS = 5L * 60 * 1000;
+
+    /**
+     * This cycle's snapshot of the remote API: one read per cycle, shared by
+     * {@code rediscover} and every per-resource {@code collect}. Never served
+     * once it is half a collection interval old, even if no new cycle began.
+     * Half, not a whole one: the age counts from when the read finished, and
+     * the next cycle starts one interval after the last one started, so a
+     * whole-interval limit could still hand the previous cycle's data to a
+     * cycle that skipped its rediscover. Half also leaves room for a cycle
+     * that runs long (it then reads again mid-cycle, which is fresher, not
+     * staler). It is a safety net for the default interval only: the real
+     * cycle boundary is {@code beginCycle()} in {@code rediscover}. Age is
+     * measured on {@code System.nanoTime()}, which never steps backward, so
+     * a wall-clock change cannot keep an old snapshot looking young. See
+     * {@link CycleCache}.
+     */
+    private final CycleCache<Snapshot> snapshots = new CycleCache<>(
+            COLLECTION_INTERVAL_MS / 2, () -> System.nanoTime() / 1_000_000L);
+
+    /**
+     * Why the last configure built no client (an invalid host or port, or a
+     * client that could not be built), or {@code null}. Every read this
+     * cycle then fails with it (ERROR) until
+     * the instance is edited.
+     */
+    private volatile String configError;
+
     // -----------------------------------------------------------------------
     // Constructors — keyed, per the framework contract. The no-arg form is hit
     // during controller-side describe (no platform injection yet); the two-arg
@@ -109,16 +146,52 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
 
     @Override
     protected void configureAdapter(ResourceStatus status, ResourceConfig rc) {
-        ExampleConfig cfg = buildConfig(rc);
+        // Drop the previous configuration's client first: the framework has
+        // already discarded its HTTP client, and if anything below throws,
+        // no read may go through the stale one.
+        this.api = null;
+        this.configError = null;
+        snapshots.beginCycle();
+        ExampleConfig cfg;
+        try {
+            cfg = buildConfig(rc);
+        } catch (IllegalArgumentException e) {
+            // Invalid host or port (ExampleConfig validates them). Build no
+            // client; every read fails with this message until the instance
+            // is edited, and Test Connection shows the same message. The
+            // message never quotes a rejected value. // REDACT-SECRET
+            this.configError = e.getMessage();
+            logError("ExampleAdapter configuration is invalid: " + e.getMessage(), e);
+            return;
+        }
         this.config = cfg;
-        this.httpClient = buildHttpClient(cfg);
+        try {
+            this.httpClient = buildHttpClient(cfg);
+        } catch (RuntimeException e) {
+            // For example a platform trust-store failure. Same posture as an
+            // invalid config: no client, every read fails ERROR with a reason
+            // that points at this log line (the class name only, not the text).
+            this.configError = "the HTTP client could not be built ("
+                    + e.getClass().getSimpleName() + "); see the configure ERROR "
+                    + "in the adapter log";
+            logError("ExampleAdapter could not build its HTTP client", e);
+            return;
+        }
         this.api = new ExampleApiClient(this.httpClient,
                 componentLogger(ExampleApiClient.class));
+        // A new configuration must not be served the old one's snapshot.
+        snapshots.beginCycle();
 
         // host/port are safe to log; allowInsecure is a lab flag. The password is
         // never referenced here. // REDACT-SECRET
         logInfo("ExampleAdapter configured: host=" + cfg.host + " port=" + cfg.port
                 + " allowInsecure=" + cfg.allowInsecure);
+        // One WARN per configure while validation is off, so an insecure
+        // instance stays visible in the log after every edit or restart.
+        String insecure = cfg.insecureWarning();
+        if (insecure != null) {
+            logWarn(insecure);
+        }
     }
 
     private ExampleConfig buildConfig(ResourceConfig rc) {
@@ -135,7 +208,7 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
         // password never leaves the client and is never logged. // REDACT-SECRET
         HttpClientBuilder b = HttpClientBuilder.builder()
                 .baseUrl(cfg.baseUrl())
-                .auth(new BasicAuth(cfg.username, cfg.password)) // REDACT-SECRET
+                .auth(new BasicAuth(cfg.username, cfg.password())) // REDACT-SECRET
                 .retryPolicy(RetryPolicy.builder()
                         .maxAttempts(3)
                         .baseDelayMs(1000)
@@ -171,16 +244,12 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
             try {
                 ExampleApiClient testApi = new ExampleApiClient(testHttp,
                         componentLogger(ExampleApiClient.class));
-                SimpleJson items = testApi.listItems();
-                SimpleJson data = items.get("data");
-                if (data.isNull() || !data.isList()) {
-                    // Unreadable, not "empty" — fail loud. A success-shaped but
-                    // data-free payload must NOT pass the test.
-                    throw new IOException("Remote /api/items returned a 200 with no "
-                            + "readable 'data' list");
-                }
+                // The SAME parse the collection cycle uses, so Test Connection
+                // cannot pass a payload every cycle would then reject (no
+                // 'data' list, or rows with no id after a schema change).
+                Snapshot snap = parseSnapshot(testApi.listItems());
                 logInfo("Test OK: connected to " + testCfg.host + ", "
-                        + data.size() + " item(s)");
+                        + snap.byId.size() + " item(s)");
             } finally {
                 testHttp.discard();
             }
@@ -205,6 +274,7 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
     protected VcfCfDiscoverer<ExampleConfig> getDiscoverer() {
         return (cfg, http, param, dr) -> {
             logInfo("ExampleAdapter discover (onDiscover path): enumerating");
+            snapshots.beginCycle(); // a discovery pass is its own cycle
             enumerateResources(currentSnapshot(), dr::addResource);
         };
     }
@@ -217,19 +287,15 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
      * one method is the cardinal requirement of dual-path discovery — the two
      * paths can never drift.
      */
-    private void enumerateResources(SimpleJson snapshot, ResourceSink sink) {
+    private void enumerateResources(Snapshot snapshot, ResourceSink sink) {
         // World anchor: the traversal entry point, always present.
         sink.accept(rcOf("World", "Example World", "world_id", "example_world"));
 
-        int count = 0;
-        for (SimpleJson item : snapshot.get("data").asList()) {
-            String id = item.get("id").asString();
-            if (id == null || id.isEmpty()) continue;
-            String name = item.get("name").asString(id);
-            sink.accept(rcOf("ExampleResource", name, "id", id));
-            count++;
+        for (Map.Entry<String, SimpleJson> e : snapshot.byId.entrySet()) {
+            String name = e.getValue().get("name").asString(e.getKey());
+            sink.accept(rcOf("ExampleResource", name, "id", e.getKey()));
         }
-        logInfo("Example enumerate: " + count + " ExampleResource(s)");
+        logInfo("Example enumerate: " + snapshot.byId.size() + " ExampleResource(s)");
     }
 
     /** The seam that lets one enumeration body feed both discovery paths. */
@@ -245,7 +311,7 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
     }
 
     // -----------------------------------------------------------------------
-    // getCollector — per-resource collect over a shared snapshot, with
+    // getCollector: per-resource collect over one snapshot per cycle, with
     // collect-path discovery wired in via needsRediscovery/rediscover.
     // -----------------------------------------------------------------------
 
@@ -263,6 +329,13 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
              * platform DOES call {@code onCollect()} on cadence; the framework
              * runs {@code rediscover()} at the top of every cycle when this
              * returns true. Returning true makes discovery self-sufficient.
+             *
+             * <p><b>The snapshot depends on this too.</b> {@code rediscover} is
+             * also the top of the snapshot cycle ({@code snapshots.beginCycle()}).
+             * If you ever make this conditional, move {@code beginCycle()} to a
+             * place that runs every cycle, or every cycle that skips rediscover
+             * serves the previous snapshot (until the maximum age drops it) and
+             * stamps its values with the current time.
              */
             @Override
             public boolean needsRediscovery(ExampleConfig cfg) {
@@ -278,11 +351,24 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
              * before the per-resource collect loop on the first cycle after
              * configure, a fresh (0-resource) instance populates on its first
              * collect.
+             *
+             * <p>It is also the top of the cycle for the snapshot: it forgets
+             * the last cycle's snapshot and reads a fresh one, which every
+             * {@code collect} below then shares.
              */
             @Override
             public void rediscover(ExampleConfig cfg, ManagedHttpClient http,
                     ResourceConfig adapterInst, AdapterBase adapter)
                     throws InterruptedException, Exception {
+                // Catches only a stop or discard that lands in the moment after
+                // onCollect starts: the framework clears the abort flag as the
+                // first step of every onCollect, so this is not a guard against
+                // a stop that came between cycles.
+                if (isAbortRequested()) return;
+                // Top of the snapshot cycle. Runs every cycle only because
+                // needsRediscovery() always returns true; see its Javadoc
+                // before making that conditional.
+                snapshots.beginCycle();
                 logInfo("ExampleAdapter rediscover (collect-path discovery): enumerating");
                 enumerateResources(currentSnapshot(),
                         ExampleAdapter.this::registerNewResource);
@@ -307,80 +393,139 @@ public final class ExampleAdapter extends VcfCfAdapter<ExampleConfig> {
             @Override
             public ResourceStatusEnum mapCollectException(Exception e) {
                 // Distinguish unreachable (DOWN) from reachable-but-failed (ERROR)
-                // so operators see the right state.
-                if (e instanceof java.net.ConnectException) {
-                    return ResourceStatusEnum.RESOURCE_STATUS_DOWN;
-                }
-                return ResourceStatusEnum.RESOURCE_STATUS_ERROR;
+                // so operators see the right state. Walks the cause chain, so a
+                // failure wrapped by the HTTP or retry layer still maps to DOWN.
+                return ExampleFailures.isUnreachable(e)
+                        ? ResourceStatusEnum.RESOURCE_STATUS_DOWN
+                        : ResourceStatusEnum.RESOURCE_STATUS_ERROR;
             }
         };
     }
 
     /**
-     * Per-cycle snapshot of the remote API.
-     *
-     * <p>In this minimal template the snapshot is a single {@code listItems()}
-     * pull fetched fresh each call. A real adapter with multiple endpoints and
-     * many resources should cache one immutable snapshot per cycle and serve all
-     * per-resource {@code collect()} calls from it — see the {@code Snapshot}
-     * inner class in {@code content/sdk-adapters/unifi}.
+     * One immutable read of the remote API, indexed by item id so each
+     * per-resource {@code collect} is a map lookup, not a scan of the list.
+     * Add a field per endpoint when your adapter reads more than one.
+     */
+    private static final class Snapshot {
+        /** Items by id, in payload order. Unmodifiable. */
+        final Map<String, SimpleJson> byId;
+
+        Snapshot(Map<String, SimpleJson> byId) {
+            this.byId = Collections.unmodifiableMap(byId);
+        }
+    }
+
+    /**
+     * This cycle's snapshot: read on the first call of the cycle (normally
+     * {@code rediscover}), then shared by every {@code collect} in the cycle.
+     */
+    private Snapshot currentSnapshot() throws Exception {
+        return snapshots.get(this::fetchSnapshot);
+    }
+
+    /**
+     * Read the remote API once and index it.
      *
      * <p><b>Loud failure.</b> A REST error, or a success-shaped payload with no
-     * readable {@code data} list, THROWS — the framework then marks the resource
-     * ERROR/DOWN. {@code SimpleJson} is null-tolerant ({@code asDouble()->0.0}),
-     * so without this contract-assert an unreadable response would publish a
-     * healthy-looking but data-free instance.
+     * readable {@code data} list, THROWS, and the framework then marks the
+     * resource ERROR/DOWN. {@code SimpleJson} is null-tolerant
+     * ({@code asDouble()->0.0}), so without this contract-assert an unreadable
+     * response would publish a healthy-looking but data-free instance.
      */
-    private SimpleJson currentSnapshot() throws Exception {
-        SimpleJson items = api.listItems();
+    private Snapshot fetchSnapshot() throws Exception {
+        // Read the volatile field once: onDiscard() nulls it, possibly while
+        // this cycle is still running. A discarded instance stops the cycle
+        // (InterruptedException) instead of failing with an NPE.
+        ExampleApiClient client = this.api;
+        if (client == null) {
+            String invalid = this.configError;
+            if (invalid != null) {
+                throw new IllegalStateException("Adapter instance configuration "
+                        + "is invalid: " + invalid);
+            }
+            throw new InterruptedException("discarded");
+        }
+        return parseSnapshot(client.listItems());
+    }
+
+    /**
+     * Validate and index one {@code /api/items} payload. The single parse
+     * shared by the collection cycle ({@link #fetchSnapshot}) and Test
+     * Connection ({@link #getTester}), so the test can never pass a payload
+     * the cycle rejects.
+     *
+     * @throws IOException when there is no readable {@code data} list, or a
+     *         non-empty list has no item ids at all (schema drift, see
+     *         {@link ItemIndex#byId}); an occasional id-less row is skipped
+     */
+    private static Snapshot parseSnapshot(SimpleJson items) throws IOException {
         SimpleJson data = items.get("data");
         if (data.isNull() || !data.isList()) {
             throw new IOException("Remote /api/items returned a 200 payload with no "
-                    + "readable 'data' list — treating as unreadable (no sentinel "
+                    + "readable 'data' list, treating as unreadable (no sentinel "
                     + "metrics published)");
         }
-        return items;
+        return new Snapshot(ItemIndex.byId(data.asList(),
+                item -> item.get("id").asString(), "Remote /api/items"));
     }
 
-    private void collectExampleResource(ResourceConfig rc, SimpleJson snapshot,
+    private void collectExampleResource(ResourceConfig rc, Snapshot snapshot,
             List<MetricData> out) {
         String id = getIdentifier(rc, "id");
-        SimpleJson item = findItem(snapshot, id);
+        SimpleJson item = id == null ? null : snapshot.byId.get(id);
         if (item == null) {
-            // The resource was discovered but is absent this cycle. Skip it (the
-            // framework will leave it without fresh data) — do NOT publish a
-            // zero. Absence is not a measured value.
+            // The resource was discovered but is absent this cycle. Publish
+            // nothing for it: absence is not a measured value, so no zero and
+            // no empty string. Note that collect() returning normally still
+            // makes the framework mark the resource DATA_RECEIVING; throw here
+            // instead if your pak should show a vanished object as ERROR.
             logWarn("collect: item " + id + " absent from snapshot");
             return;
         }
         // Example numeric metric + string property. Replace with your fields.
-        metric(out, "Status|value", item.get("value").asDouble());
-        prop(out, "Configuration|name", item.get("name").asString(""));
-    }
-
-    private static SimpleJson findItem(SimpleJson snapshot, String id) {
-        if (id == null) return null;
-        for (SimpleJson item : snapshot.get("data").asList()) {
-            if (id.equals(item.get("id").asString())) return item;
-        }
-        return null;
+        // metricIfPresent skips a missing or non-numeric field: a gap in the
+        // chart, never a published 0.0 that looks like a real reading.
+        metricIfPresent(out, "Status|value", item.get("value"));
+        prop(out, "Configuration|name", item.get("name").asString());
     }
 
     // -----------------------------------------------------------------------
     // MetricData append helpers.
+    //   metricIfPresent() -> numeric, only when the JSON field holds a number.
+    //               Use this for every metric read from a payload.
     //   metric() -> numeric  (new MetricKey(key), isProperty=false)
     //   prop()   -> string property (new MetricKey(true, key)) — REQUIRED for
     //               strings; the platform silently discards string values on a
-    //               non-property MetricKey.
+    //               non-property MetricKey. A null (absent) value is skipped,
+    //               never published as "".
     // -----------------------------------------------------------------------
+
+    /**
+     * Publish {@code field} as a numeric metric only when it is present and
+     * numeric. {@code SimpleJson.asDouble()} returns {@code 0.0} for a
+     * missing, null or non-numeric field, so calling {@code metric(out, key,
+     * field.asDouble())} directly publishes absence as a zero. Absence is not
+     * a measured value: skip it.
+     *
+     * @return whether a sample was added
+     */
+    private static boolean metricIfPresent(List<MetricData> out, String key,
+            SimpleJson field) {
+        Double value = ExampleValues.numericOrNull(field.asString());
+        if (value == null) return false;
+        metric(out, key, value);
+        return true;
+    }
 
     private static void metric(List<MetricData> out, String key, double value) {
         out.add(new MetricData(new MetricKey(key), System.currentTimeMillis(), value));
     }
 
     private static void prop(List<MetricData> out, String key, String value) {
+        if (value == null) return; // absent: skip, never an "" sentinel
         out.add(new MetricData(new MetricKey(true, key),
-                System.currentTimeMillis(), value != null ? value : ""));
+                System.currentTimeMillis(), value));
     }
 
     // -----------------------------------------------------------------------

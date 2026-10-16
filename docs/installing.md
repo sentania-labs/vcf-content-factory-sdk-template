@@ -51,7 +51,13 @@ The example adapter requires only read access to its (fictional) API.
 
 By default the adapter validates the target certificate against the
 platform trust store. Set `allowInsecure=true` to disable validation, or
-import the target certificate into the trust store.
+import the target certificate into the trust store. The adapter logs a
+WARN on every configure while `allowInsecure=true`.
+
+**Upgrading from build 1:** build 1 shipped `allowInsecure` with a default
+of `true`. An existing instance keeps the value it was saved with, so an
+instance created with the old default still skips validation after the
+upgrade. Edit the instance and set Allow Insecure SSL to `false`.
 
 ## Configuration Fields
 
@@ -63,8 +69,8 @@ in sync with your real config fields (regenerate the docset after changing
 | Field | Key | Required | Default | Notes |
 |-------|-----|----------|---------|-------|
 | Host / IP Address | `host` | Yes | — | Target hostname or IP. |
-| Port (HTTPS) | `port` | No | — | API port. |
-| Allow Insecure SSL | `allowInsecure` | No | — | `true` disables certificate validation. |
+| Port (HTTPS) | `port` | No | 443 | API port. |
+| Allow Insecure SSL | `allowInsecure` | No | false | Only `true` (any letter case, no surrounding spaces) disables certificate validation; blank or any other value keeps it on. |
 
 ## Step-by-Step Installation
 

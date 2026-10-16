@@ -29,7 +29,13 @@ icons/icons.yaml                          # ResourceKind -> icon mapping (option
 src/com/vcfcf/adapters/example/           # adapter Java source
   ExampleAdapter.java                     #   the adapter (heavily commented — read this first)
   ExampleApiClient.java                   #   thin REST client
-  ExampleConfig.java                      #   typed config POJO
+  ExampleConfig.java                      #   typed config POJO (validated host/port, redacted toString)
+  ExampleFailures.java                    #   unreachable (DOWN) vs failed (ERROR), cause-chain walk
+  ExampleValues.java                      #   numeric-or-absent check behind metricIfPresent
+  CycleCache.java                         #   one snapshot per collection cycle
+  ItemIndex.java                          #   id index; throws when a non-empty list has no ids
+  BoundedBody.java                        #   response body handler with an 8 MB cap
+tests/com/vcfcf/adapters/example/         # plain-main tests for the helpers above (no SDK jar)
 .github/workflows/build-pak-on-tag.yml    # CI: tag v* -> build .pak -> attach to Release
 .github/workflows/pak-tests.yml           # reusable CI: JDK 17 + 25 test matrix, no secrets, no SDK jar
 .github/workflows/tests.yml               # CI: every push and PR -> calls pak-tests.yml (@main in paks)
@@ -120,14 +126,19 @@ build the `.pak` — the toolchain is a portable tarball. You need:
 Then, from the root of this repo:
 
 ```bash
-# 1. Fetch the build toolchain (pin a full sdk-buildkit-vX.Y.Z tag for
-#    reproducibility, or use the floating major sdk-buildkit-v1)
-gh release download sdk-buildkit-v1 \
+# 1. Fetch the build toolchain. Pin a full sdk-buildkit-vX.Y.Z tag (the
+#    floating sdk-buildkit-v1 tag moves under you) and verify the published
+#    checksum before unpacking.
+BUILDKIT_VERSION=1.0.11
+gh release download "sdk-buildkit-v$BUILDKIT_VERSION" \
   --repo sentania-labs/vcf-content-factory \
-  --pattern 'sdk-buildkit-*.tgz'
-# No gh? The asset is public — fetch it with curl instead:
-#   curl -sL https://github.com/sentania-labs/vcf-content-factory/releases/download/sdk-buildkit-v1/sdk-buildkit-v1.tgz -o sdk-buildkit-v1.tgz
-tar xzf sdk-buildkit-*.tgz
+  --pattern "sdk-buildkit-$BUILDKIT_VERSION.tgz*"
+# No gh? The assets are public; fetch both with curl instead:
+#   base=https://github.com/sentania-labs/vcf-content-factory/releases/download/sdk-buildkit-v$BUILDKIT_VERSION
+#   curl -fsSLO "$base/sdk-buildkit-$BUILDKIT_VERSION.tgz"
+#   curl -fsSLO "$base/sdk-buildkit-$BUILDKIT_VERSION.tgz.sha256"
+sha256sum -c "sdk-buildkit-$BUILDKIT_VERSION.tgz.sha256"   # macOS: shasum -a 256 -c
+tar xzf "sdk-buildkit-$BUILDKIT_VERSION.tgz"
 
 # 2. Point the kit at your SDK jar and build
 export VCFCF_SDK_JAR=/path/to/vrops-adapters-sdk-2.2.jar
@@ -152,9 +163,11 @@ before your own `v*` tags will build (it already runs on GitHub-hosted
 
 **SDK jar sourcing**: the upstream workflow fetches the Broadcom
    jar from a private repo via an `SDK_RUNTIME_SSH_KEY` deploy-key
-   secret you won't have. Replace that step with your own source —
-   e.g. store the appliance-extracted jar in your own private repo or
-   an Actions secret/artifact store. Then **also update the
+   secret you won't have. Replace that step with your own source:
+   store the appliance-extracted jar in **a private repo only**, and
+   fetch it from there. Never upload the jar as a workflow artifact:
+   on a public repo anyone can download workflow artifacts, which
+   would amount to redistributing it. Then **also update the
    `--sdk-jar` argument** on the `build-sdk` line of the workflow to
    point at wherever your replacement step puts the jar. The explicit
    `--sdk-jar` flag overrides `VCFCF_SDK_JAR`, so setting the env var
@@ -170,8 +183,10 @@ is built by CI, never on a laptop:
 1. Author + commit + push to `main`.
 2. **Push a `vX.Y.Z` tag.** The `build-pak-on-tag` workflow:
    - pulls the published `sdk-buildkit` tarball from the factory's Releases,
-   - fetches the private Broadcom SDK jar from
-     `sentania-labs/vcf-content-factory-sdk-runtime` (release `sdk-2.2`),
+   - fetches the private Broadcom SDK jar with a shallow `git clone` of
+     `sentania-labs/vcf-content-factory-sdk-runtime` (the jar is committed at
+     that repo's root; no release asset is used), authenticated by the
+     `SDK_RUNTIME_SSH_KEY` deploy key,
    - builds the `.pak` deterministically (no agent, no factory checkout),
    - gates on `pak-compare` (zero BLOCKING required), and
    - attaches the `.pak` to the tag's GitHub Release.

@@ -1,6 +1,6 @@
 # Inventory Tree — VCF Content Factory Example Adapter
 
-> Generated from `describe.xml` v0.1.0.1. Do not edit — regenerated on every build.
+> Generated from `describe.xml` v0.0.0.2. Do not edit — regenerated on every build.
 
 **Traversal Spec:** Example Infrastructure
 
