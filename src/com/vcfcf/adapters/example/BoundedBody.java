@@ -24,8 +24,11 @@ import java.util.concurrent.Flow;
  *       {@link IOException} past that (it cancels the transfer, so nothing
  *       more is read), including when {@code Content-Length} already says
  *       the body is too large;</li>
- *   <li>discards the body of any other status unread (the caller reports
- *       the status only, never the body).</li>
+ *   <li>does not read the body of any other status at all: it cancels the
+ *       transfer at once and answers {@code null} (the caller reports the
+ *       status only, never the body). Draining it instead would hold the
+ *       collector thread for as long as a misbehaving target keeps
+ *       streaming, because the request timeout stops at the headers.</li>
  * </ul>
  * Raise {@link #DEFAULT_MAX_BYTES} if a real endpoint of yours legitimately
  * returns more; keep one constant per pak.
@@ -46,7 +49,7 @@ final class BoundedBody implements HttpResponse.BodyHandler<String> {
     public HttpResponse.BodySubscriber<String> apply(HttpResponse.ResponseInfo info) {
         if (info.statusCode() != 200) {
             // Not needed: the caller reports the status, never the body.
-            return HttpResponse.BodySubscribers.replacing(null);
+            return new Unread();
         }
         long declared = info.headers().firstValueAsLong("Content-Length").orElse(-1L);
         if (declared > maxBytes) {
@@ -73,6 +76,42 @@ final class BoundedBody implements HttpResponse.BodyHandler<String> {
     private static IOException tooLarge(long maxBytes) {
         return new IOException("response body exceeds the " + maxBytes
                 + "-byte cap; not read");
+    }
+
+    /**
+     * Cancels the transfer on subscribe and answers {@code null}: no byte of
+     * the body is requested, so a slow or endless body cannot hold the
+     * thread. The connection is closed rather than reused, which is fine for
+     * an error response.
+     */
+    static final class Unread implements HttpResponse.BodySubscriber<String> {
+        private final CompletableFuture<String> result = new CompletableFuture<>();
+
+        @Override
+        public void onSubscribe(Flow.Subscription s) {
+            s.cancel();
+            result.complete(null);
+        }
+
+        @Override
+        public void onNext(List<ByteBuffer> items) {
+            // never requested
+        }
+
+        @Override
+        public void onError(Throwable t) {
+            result.complete(null); // the body was never wanted
+        }
+
+        @Override
+        public void onComplete() {
+            result.complete(null);
+        }
+
+        @Override
+        public CompletionStage<String> getBody() {
+            return result;
+        }
     }
 
     /**

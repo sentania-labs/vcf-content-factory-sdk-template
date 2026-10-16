@@ -30,8 +30,9 @@
   checks `isAbortRequested()` at entry (#14).
 - fix(adapter): response bodies are read through a bounded handler (#12). New
   `BoundedBody` caps a 200 body at 8 MB (`DEFAULT_MAX_BYTES`, one constant)
-  and fails with `IOException` past it, without buffering the rest; non-200
-  bodies are discarded unread. `ExampleApiClient.get()` rejects a 200 with a
+  and fails with `IOException` past it, without buffering the rest; a non-200
+  body is not read at all (the transfer is cancelled at once, so a slow or
+  endless error body cannot hold the collector thread; review W1). `ExampleApiClient.get()` rejects a 200 with a
   non-JSON `Content-Type` (for example an HTML proxy page) before parsing.
 - fix(adapter): `ExampleConfig` validates host and port (#16). The host must
   be a bare hostname, IPv4 address or bracketed IPv6 address (no `/ @ ? #`,

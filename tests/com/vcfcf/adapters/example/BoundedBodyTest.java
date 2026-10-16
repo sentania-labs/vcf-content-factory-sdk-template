@@ -14,7 +14,7 @@ import java.util.concurrent.Flow;
 /**
  * Issue #12: a body under the cap is read whole, a body over the cap fails
  * with IOException and cancels the transfer (also when Content-Length says
- * so up front), a non-200 body is never read, and only JSON content types
+ * so up front), a non-200 body is cancelled unread, and only JSON content types
  * pass. Run from the repo root (ci/run_java_tests.sh).
  */
 public final class BoundedBodyTest {
@@ -96,15 +96,20 @@ public final class BoundedBodyTest {
         T.eq(0L, sub.requested, "no byte requested");
     }
 
+    /** Review W1: a non-200 body is cancelled unread, not drained. */
     static void nonOkBodyDiscarded() throws Exception {
-        HttpResponse.BodySubscriber<String> s =
-                new BoundedBody(4).apply(info(500, Map.of()));
-        Sub sub = new Sub();
-        s.onSubscribe(sub);
-        s.onNext(bytes("a large HTML error page, far over the cap"));
-        s.onComplete();
-        T.eq(null, s.getBody().toCompletableFuture().get(),
-                "a non-200 body is discarded, not buffered");
+        for (int status : new int[] {500, 503, 401, 302}) {
+            HttpResponse.BodySubscriber<String> s =
+                    new BoundedBody(4).apply(info(status, Map.of()));
+            Sub sub = new Sub();
+            s.onSubscribe(sub);
+            T.check(sub.cancelled, status + ": the transfer is cancelled on subscribe");
+            T.eq(0L, sub.requested, status + ": no byte requested");
+            T.check(s.getBody().toCompletableFuture().isDone(),
+                    status + ": answered at once, without waiting for the body");
+            T.eq(null, s.getBody().toCompletableFuture().get(),
+                    status + ": the answer is null");
+        }
     }
 
     static void jsonContentTypes() {
