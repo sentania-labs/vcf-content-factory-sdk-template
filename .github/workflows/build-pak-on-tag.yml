@@ -17,6 +17,12 @@
 # .pak deterministically (no agent, no factory checkout), gates on pak-compare,
 # and attaches the .pak to this tag's GitHub Release.
 #
+# Two jobs (issue #18 CI1). `build` holds only a read token and runs
+# everything that executes third-party code (the buildkit, the build, the
+# compare gate); it hands the .pak over as a workflow artifact. `publish`
+# runs no build code, holds the write token, and only creates the Release
+# from that artifact.
+#
 # Required secret: SDK_RUNTIME_SSH_KEY
 #   A read-only ed25519 deploy key for sentania-labs/vcf-content-factory-sdk-runtime.
 #   The Broadcom SDK jar (vrops-adapters-sdk-2.2.jar) is committed at the repo root of
@@ -32,8 +38,14 @@ on:
     tags:
       - 'v*'          # pak release tags (factory's buildkit uses sdk-buildkit-v*, a different repo)
 
-permissions:
-  contents: write     # needed to create/upload the Release in THIS repo
+# No token scope at workflow level; each job asks for exactly what it needs.
+permissions: {}
+
+# Per-ref group: two pushes of the same tag queue instead of racing to
+# create one Release; different tags never block each other.
+concurrency:
+  group: build-pak-on-tag-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   # Which buildkit to pin. Use a full version (vX.Y.Z) for explicit opt-in,
@@ -50,10 +62,15 @@ jobs:
     # runner queues silently for ~24h instead of failing. Use `runs-on: lab`
     # only for a job that must reach lab resources.
     runs-on: ubuntu-latest
+    permissions:
+      contents: read      # read-only: no step in this job can write the repo
 
     steps:
       - name: Checkout adapter source
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Do not leave the token in .git/config for the build tooling.
+          persist-credentials: false
 
       # Defect gate (factory RULE-012). Runs FIRST — before any expensive
       # setup/build — so a v* tag fails fast and never produces a .pak while
@@ -190,12 +207,37 @@ jobs:
             exit 1
           fi
 
+      - name: Hand the .pak to the publish job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pak
+          path: dist/*.pak
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    # Runs no build code: downloads the artifact `build` produced and creates
+    # the Release. The only job with a write token.
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # create the Release and upload its assets
+
+    steps:
+      - name: Download the built .pak
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pak
+          path: dist
+
       - name: Publish .pak to the tag's Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # No checkout in this job, so name the repo explicitly.
           gh release create "${GITHUB_REF_NAME}" dist/*.pak \
+            --repo "$GITHUB_REPOSITORY" \
             --title "${GITHUB_REF_NAME}" \
             --notes "Automated SDK pak build for ${GITHUB_REF_NAME} (buildkit ${BUILDKIT_TAG})." \
-            || gh release upload "${GITHUB_REF_NAME}" dist/*.pak --clobber
+            || gh release upload "${GITHUB_REF_NAME}" dist/*.pak --repo "$GITHUB_REPOSITORY" --clobber
