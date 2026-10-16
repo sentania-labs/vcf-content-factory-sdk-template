@@ -120,9 +120,14 @@ class DefectRegistryError(ValueError):
 # seen as a section at all, so its fields merged into the previous entry
 # and the defect gated nothing (issue #18 CI4).
 _SECTION_RE = re.compile(r"^#{1,4}\s+(DEF-\d+)\b.*$")
-# Any heading that starts like a defect id. One that does not also match
-# _SECTION_RE ("### DEF-1O2") is malformed: fail closed.
-_DEF_HEADING_RE = re.compile(r"^#{1,4}\s+DEF-")
+# Any heading, at ANY depth, that starts like a defect id: any run of '#',
+# optional spaces, then DEF- in any case. One that does not also match
+# _SECTION_RE ("### DEF-1O2", "##### DEF-002", "###DEF-003", "### def-004")
+# is malformed: fail closed. Otherwise its field lines would fall into the
+# continuation parser and overwrite the previous entry's fields (Codex P1 on
+# PR #22: an open blocker followed by "##### DEF-002" with a tracked
+# severity made the blocker vanish).
+_DEF_HEADING_RE = re.compile(r"^#+\s*DEF-", re.IGNORECASE)
 _FIELD_RE = re.compile(r"^-\s+\*\*([^:]+):\*\*\s*(.*)")
 
 # Anything that makes an Affects value more than one bare token.

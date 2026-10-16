@@ -76,6 +76,20 @@ class GateTest(unittest.TestCase):
             defect_gate.gate_pak("template", p)
         self.assertEqual(self.run_cli(p, "template"), 1)
 
+    def test_deep_or_odd_def_heading_after_blocker_fails_closed(self):
+        # Codex P1: these headings did not match the old detector, so the
+        # second entry's fields (Severity: tracked) overwrote the open
+        # blocker's and gate_pak returned nothing.
+        for heading in ("##### DEF-002", "###### DEF-002", "###DEF-002",
+                        "### def-002", "####### DEF-002 (deep)"):
+            with self.subTest(heading=heading):
+                p = self.write(registry(
+                    entry(1, "template"),
+                    entry(2, "template", severity="tracked", heading=heading)))
+                with self.assertRaises(defect_gate.DefectRegistryError):
+                    defect_gate.gate_pak("template", p)
+                self.assertEqual(self.run_cli(p, "template"), 1)
+
     def test_prose_heading_is_not_a_defect(self):
         p = self.write(registry(entry(1, "unifi")) + "\n### DEFECTS ELSEWHERE\n\nprose\n")
         self.assertEqual(defect_gate.gate_pak("template", p), [])
