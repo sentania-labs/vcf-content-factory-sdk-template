@@ -66,6 +66,30 @@ There is **no `lib/` of bundled jars** (C2 pak shape — see below).
    VCF Ops 9.0.2, which never calls `onDiscover()`), `componentLogger(Class)`,
    cooperative cancellation, and loud-failure (no sentinel for an unreadable
    value).
+5. **Keep the unsigned-pak section.** Leave `## Installing: allow unsigned
+   paks first` in the derived pak's README, directly before its install steps.
+
+## Installing: allow unsigned paks first
+
+This pak is unsigned, like every pak the VCF Content Factory builds (Broadcom
+offers no way for a third party to sign one). VCF Operations 9.0 and 9.1 refuse
+unsigned paks out of the box; behavior on 8.x is unverified. The setting below
+must be on for each install or upgrade of an unsigned pak:
+
+1. Log in to `https://<primary node>/admin` as `admin`.
+2. Administrator Settings, Security Settings: click **Activate Unsigned PAK
+   Installation** on 9.1 (**Enable Unsigned PAK Installation** on 9.0). The
+   change is refused while any cluster node is down.
+3. When uploading the pak (**Administration > Integrations > Repository >
+   Add**), tick **Ignore the PAK file signature checking**. The box only
+   appears once the setting is on.
+
+With the setting off, the install fails with
+`unsigned_pak_installation.not.allowed`. This is a cluster-wide security
+setting: it lets any unsigned pak be installed, not only this one, so decide
+it deliberately and consider turning it off again after installing. If you do,
+it has to go back on before you install the next build. Upgraded appliances
+keep whatever state the setting had before the upgrade.
 
 **Tests on every push and PR.** A new pak inherits the test workflow by keeping `.github/workflows/tests.yml` as created: it calls this template's `pak-tests.yml@main`, which runs `ci/run_java_tests.sh` (every `tests/**/*Test.java`) on JDK 17 and 25 (pass `test-script:`, `pre-check:` or `java-versions:` under `with:` to customize).
 A pak instantiated from the template also carries a copy of `pak-tests.yml` that it never runs (only the template calls its local copy); the pak may delete it.
