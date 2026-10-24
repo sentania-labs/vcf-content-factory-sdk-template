@@ -111,7 +111,7 @@ class DefectEntry:
 class DefectRegistryError(ValueError):
     """Raised when the defect registry is malformed.
 
-    ``python3 -m vcfops_packaging defect-gate`` exits 1 on this error;
+    ``python3 -m vcfcf_packaging defect-gate`` exits 1 on this error;
     ``release`` and ``publish`` also exit non-zero so the malformed registry
     is never silently treated as an all-clear.
     """

@@ -81,18 +81,18 @@ use the factory's builder. The Broadcom SDK jar (`vrops-adapters-sdk-2.2.jar`) i
 #   scp root@<appliance>:/usr/lib/vmware-vcops/common-lib/vrops-adapters-sdk-2.2.jar .
 
 # Either pass it explicitly:
-python3 -m vcfops_managementpacks build-sdk content/sdk-adapters/<name> \
+python3 -m vcfcf_managementpacks build-sdk content/sdk-adapters/<name> \
   --sdk-jar /path/to/vrops-adapters-sdk-2.2.jar -o dist
 
 # ...or set it once in the environment:
 export VCFCF_SDK_JAR=/path/to/vrops-adapters-sdk-2.2.jar
-python3 -m vcfops_managementpacks build-sdk content/sdk-adapters/<name> -o dist
+python3 -m vcfcf_managementpacks build-sdk content/sdk-adapters/<name> -o dist
 ```
 
 Validate first (the cheap loop — exhaust this before building a pak):
 
 ```sh
-python3 -m vcfops_managementpacks validate-sdk content/sdk-adapters/<name>
+python3 -m vcfcf_managementpacks validate-sdk content/sdk-adapters/<name>
 ```
 
 The framework jar (`vcfcf-adapter-base.jar`) is provided by the builder; you do

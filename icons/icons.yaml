@@ -3,7 +3,7 @@
 # Keys correspond to describe.xml ResourceKind key attributes. Values are icon
 # filenames resolved against:
 #   1. This directory (drop project-specific .svg overrides here), then
-#   2. vcfops_managementpacks/templates/icons/ (shared library) at build time.
+#   2. vcfcf_managementpacks/templates/icons/ (shared library) at build time.
 #
 # This file is optional — the builder falls back to a default icon when it is
 # absent or a kind is unmapped. Rename the keys when you adapt the template.
