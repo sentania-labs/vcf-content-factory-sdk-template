@@ -183,10 +183,12 @@ is built by CI, never on a laptop:
 1. Author + commit + push to `main`.
 2. **Push a `vX.Y.Z` tag.** The `build-pak-on-tag` workflow:
    - pulls the published `sdk-buildkit` tarball from the factory's Releases,
-   - fetches the private Broadcom SDK jar with a shallow `git clone` of
+   - fetches the private Broadcom SDK jar from
      `sentania-labs/vcf-content-factory-sdk-runtime` (the jar is committed at
      that repo's root; no release asset is used), authenticated by the
-     `SDK_RUNTIME_SSH_KEY` deploy key,
+     `SDK_RUNTIME_SSH_KEY` deploy key, at the pinned `SDK_RUNTIME_COMMIT`
+     (never that repo's HEAD), and checks the jar against `SDK_JAR_SHA256`
+     with `sha256sum -c` before anything compiles against it,
    - builds the `.pak` deterministically (no agent, no factory checkout),
    - gates on `pak-compare` (zero BLOCKING required), and
    - attaches the `.pak` to the tag's GitHub Release.
