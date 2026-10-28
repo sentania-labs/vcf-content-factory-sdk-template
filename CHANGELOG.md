@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.0.3 (Unreleased)
+
+- fix(adapter): the example navigation spec is rooted at the World kind
+  (`rootResourceKind="World"`, path
+  `example_adapter::World||example_adapter::ExampleResource::child`), the way
+  VMware's vSphere adapter roots "vSphere Hosts and Clusters" at
+  `VMWARE::vSphere World`. Build 2 rooted it at the adapter instance kind
+  (`example_adapter::example_adapter||example_adapter::World::child||...`);
+  the instance resource has no children, so the first hop never matches and
+  the tree shows the instance with nothing under it (seen live on the UniFi
+  and Synology paks built from this template, 2026-10-28). describe.xml's
+  header and REFERENCE.md now teach the World root.
+
 ## 0.1.0.2 (2026-10-16)
 
 - fix(adapter): `allowInsecure` now defaults to `false` in `describe.xml`, so

@@ -24,6 +24,6 @@ description: >
   repo and replace the example resource kinds, endpoints, and metric keys with
   your target system.
 version: 0.1.0
-build_number: 2
+build_number: 3
 tier: 2
 released: false

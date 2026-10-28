@@ -14,8 +14,14 @@
       key; it carries credentialKind + the connection ResourceIdentifiers.
     - Monitored resources are type="1"; isProperty="true" for string properties,
       isProperty="false" (+ dataType="float") for numeric metrics.
-    - A World resource is the traversal entry point referenced by the
-      TraversalSpecKind ResourcePath.
+    - A World resource is the traversal entry point: the TraversalSpecKind
+      sets rootResourceKind to the World kind and every ResourcePath starts
+      at "<adapter_kind>::World||" (no ::child on the first segment), the
+      way VMWARE roots "vSphere Hosts and Clusters" at "vSphere World".
+      Do NOT root at the adapter instance kind: the instance resource has
+      no children (its only parent is Universe), so a path starting
+      "<adapter_kind>::<adapter_kind>||<adapter_kind>::World::child" never
+      matches and the tree shows the instance with nothing under it.
 -->
 <AdapterKind xmlns="http://schemas.vmware.com/vcops/schema"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -80,11 +86,13 @@
 		<TraversalSpecKind name="Example Infrastructure"
 		                   nameKey="30"
 		                   rootAdapterKind="example_adapter"
-		                   rootResourceKind="example_adapter"
+		                   rootResourceKind="World"
 		                   filterType="GENERIC_RELATION"
 		                   usedFor="ALL">
+			<!-- Rooted at the World kind, not the adapter instance (see the
+			     header). Each path starts at the root kind, then ::child hops. -->
 			<!-- World > ExampleResource -->
-			<ResourcePath path="example_adapter::example_adapter||example_adapter::World::child||example_adapter::ExampleResource::child"/>
+			<ResourcePath path="example_adapter::World||example_adapter::ExampleResource::child"/>
 		</TraversalSpecKind>
 	</TraversalSpecKinds>
 
