@@ -1,4 +1,4 @@
-# VCF Content Factory Example Adapter — Documentation
+# VCF Content Factory Example Adapter Documentation
 
 > Generated index. The SVG diagram and per-kind table are regenerated on every
 > build; prose sections (overview, installing) are hand-curated.
@@ -19,6 +19,6 @@
 ## Quick Reference
 
 - **Adapter kind:** `example_adapter`
-- **Version:** 0.0.0.2
+- **Version:** 0.0.0.3
 - **Traversal spec:** Example Infrastructure
 - **Resource kinds:** 2

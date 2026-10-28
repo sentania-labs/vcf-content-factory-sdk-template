@@ -59,7 +59,12 @@ Generated from `describe.xml` and `resources.properties` for build 0.0.0.2.
 **Name**: Example Infrastructure
 
 ```
-example_adapter
-    └── Example World
-        └── Example Resource
+Example World
+    └── Example Resource
 ```
+
+Rooted at the World kind (`rootResourceKind="World"`, path
+`example_adapter::World||example_adapter::ExampleResource::child`), the way
+VMware's vSphere adapter roots "vSphere Hosts and Clusters" at
+`VMWARE::vSphere World`. Rooting at the adapter instance kind leaves the
+tree empty below the instance: the instance resource has no children.
