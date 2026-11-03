@@ -1,0 +1,74 @@
+# No secrets: validate-sdk checks project structure without the private SDK
+# jar. Full framework/adapter compilation and release publication need a tag.
+name: sdk-validation
+
+on:
+  pull_request:
+  push:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout adapter source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned PyYAML
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check \
+            --require-hashes --only-binary :all: -r ci/requirements.txt
+
+      - name: Download and verify the release workflow's buildkit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Read the single source of truth so PR validation uses the exact
+          # release toolchain. BaseLoader treats every scalar as a string.
+          mapfile -t pins < <(python3 - <<'PY'
+          import yaml
+          from pathlib import Path
+          workflow = yaml.load(Path('.github/workflows/build-pak-on-tag.yml').read_text(), Loader=yaml.BaseLoader)
+          for key in ('BUILDKIT_REPO', 'BUILDKIT_TAG', 'BUILDKIT_SHA256'):
+              print(workflow['env'][key])
+          PY
+          )
+          test "${#pins[@]}" -eq 3
+          repo="${pins[0]}"
+          tag="${pins[1]}"
+          checksum="${pins[2]}"
+          [[ "$tag" =~ ^sdk-buildkit-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$checksum" =~ ^[0-9a-f]{64}$ ]]
+          archive="sdk-buildkit-${tag#sdk-buildkit-v}.tgz"
+          mkdir -p "$RUNNER_TEMP/kit-download" "$RUNNER_TEMP/kit"
+          gh release download "$tag" --repo "$repo" --pattern "$archive" --dir "$RUNNER_TEMP/kit-download"
+          echo "$checksum  $RUNNER_TEMP/kit-download/$archive" | sha256sum -c -
+          tar xzf "$RUNNER_TEMP/kit-download/$archive" -C "$RUNNER_TEMP/kit"
+
+      - name: Validate SDK project (without private SDK jar)
+        env:
+          PYTHONPATH: ${{ runner.temp }}/kit
+        run: python3 -m sdk_buildkit validate-sdk "$GITHUB_WORKSPACE"
+
+      - name: Test the vendored defect gate
+        run: python3 -m unittest discover -s tests/ci -p 'test_*.py' -v
+
+      - name: Test the pinned pak-compare exit status
+        env:
+          PYTHONPATH: ${{ runner.temp }}/kit
+        run: python3 tests/ci/check_pak_compare.py -v

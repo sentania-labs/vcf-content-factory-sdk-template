@@ -11,7 +11,8 @@
 #
 # No secrets and no Broadcom SDK jar, ever. The test script must compile
 # and run on a plain JDK plus python3; anything needing the SDK jar
-# (validate-sdk, build-sdk, pak-compare) stays in the tag build. A test
+# (build-sdk) stays in the tag build. The separate sdk-validation workflow
+# runs validate-sdk without the SDK jar, plus Python gate tests. A test
 # may fetch a public artifact (compliance pulls the BouncyCastle TLS jars
 # from Maven Central) provided its hash is pinned in the script.
 #
