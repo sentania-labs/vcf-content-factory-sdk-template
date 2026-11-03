@@ -2,6 +2,16 @@
 
 ## 0.1.0.3 (Unreleased)
 
+- ci: supply-chain and release hardening (#18). The release workflow splits
+  into a read-only `build` job and a write-token `publish` job, pins the
+  buildkit tag with a sha256 and the defect registry to
+  `DEFECT_REGISTRY_COMMIT`, gates on `pak-compare`'s exit status, fails the
+  defect gate closed, installs hash-pinned PyYAML, publishes `SHA256SUMS` and
+  a provenance attestation, and never overwrites a published Release. The
+  deploy key moves to the `sdk-release` Environment secret (configure its
+  required reviewers and `v*` tag rulesets separately). New
+  `sdk-validation.yml` runs `validate-sdk` and the gate tests on every push
+  and PR.
 - fix(adapter): the example navigation spec is rooted at the World kind
   (`rootResourceKind="World"`, path
   `example_adapter::World||example_adapter::ExampleResource::child`), the way

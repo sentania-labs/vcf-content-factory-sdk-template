@@ -67,7 +67,9 @@ There is **no `lib/` of bundled jars** (C2 pak shape — see below).
    cooperative cancellation, and loud-failure (no sentinel for an unreadable
    value).
 
-**Tests on every push and PR.** A new pak inherits the test workflow by keeping `.github/workflows/tests.yml` as created: it calls this template's `pak-tests.yml@main`, which runs `ci/run_java_tests.sh` (every `tests/**/*Test.java`) on JDK 17 and 25 (pass `test-script:`, `pre-check:` or `java-versions:` under `with:` to customize).
+**Tests on every push and PR.** `sdk-validation.yml` verifies the release workflow’s pinned buildkit, runs `validate-sdk` without the private SDK jar, and tests the defect gate and real pak-compare exit statuses. Full framework/adapter compilation, deploy-key access, checksum handover, provenance and release upload are proved only by a tag build. The defect registry is pinned by `DEFECT_REGISTRY_COMMIT` in the release workflow; review and update that pin before releasing when the factory registry changes.
+
+A new pak inherits the test workflow by keeping `.github/workflows/tests.yml` as created: it calls this template's `pak-tests.yml@main`, which runs `ci/run_java_tests.sh` (every `tests/**/*Test.java`) on JDK 17 and 25 (pass `test-script:`, `pre-check:` or `java-versions:` under `with:` to customize).
 A pak instantiated from the template also carries a copy of `pak-tests.yml` that it never runs (only the template calls its local copy); the pak may delete it.
 
 ## Local dev build (preview)
@@ -182,7 +184,9 @@ is built by CI, never on a laptop:
 
 1. Author + commit + push to `main`.
 2. **Push a `vX.Y.Z` tag.** The `build-pak-on-tag` workflow:
-   - pulls the published `sdk-buildkit` tarball from the factory's Releases,
+   - pulls the `sdk-buildkit` tarball from the factory's Releases at the pinned
+     `BUILDKIT_TAG` and verifies it against `BUILDKIT_SHA256` before extracting,
+   - gates on the factory defect registry, fetched at `DEFECT_REGISTRY_COMMIT`,
    - fetches the private Broadcom SDK jar from
      `sentania-labs/vcf-content-factory-sdk-runtime` (the jar is committed at
      that repo's root; no release asset is used), authenticated by the
@@ -191,13 +195,16 @@ is built by CI, never on a laptop:
      with `sha256sum -c` before anything compiles against it,
    - builds the `.pak` deterministically (no agent, no factory checkout),
    - gates on `pak-compare` (zero BLOCKING required), and
-   - attaches the `.pak` to the tag's GitHub Release.
+   - attaches the `.pak` and a `SHA256SUMS` file to the tag's GitHub Release
+     with a build-provenance attestation. A published release is never
+     overwritten: re-running a tag whose Release already has assets
+     fails.
 
 That Release asset **is** the release. A factory `/publish` that references this
 pak emits only a **pointer** to the latest Release — it never rebuilds or mirrors
 the binary.
 
-### Required org/repo secret
+### Required release environment secret
 
 `SDK_RUNTIME_SSH_KEY` — a read-only ed25519 **deploy key** for
 `sentania-labs/vcf-content-factory-sdk-runtime`. The Broadcom SDK jar is
@@ -205,9 +212,11 @@ committed at the root of that private repo and fetched by the workflow via a
 shallow git clone; it is never bundled in this repo or the buildkit (C2
 redistribution constraint). Setup: generate an ed25519 keypair, add the
 PUBLIC half as a read-only deploy key on the sdk-runtime repo, and store the
-PRIVATE half as an Actions secret named `SDK_RUNTIME_SSH_KEY` (repo or org
-level) **before** pushing a release tag. See the workflow header for the
-runner/JDK/buildkit knobs.
+PRIVATE half as an Environment secret named `SDK_RUNTIME_SSH_KEY` in
+`sdk-release` **before** pushing a release tag. See the workflow header for the
+runner/JDK/buildkit knobs. Configure required reviewers on `sdk-release` and
+protect `v*` tags with repository rulesets before releasing. Those GitHub
+settings are managed separately from this template.
 
 ## C2 pak shape — no bundled jars
 
