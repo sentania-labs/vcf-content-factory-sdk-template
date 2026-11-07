@@ -235,3 +235,7 @@ This pak **never** carries `vrops-adapters-sdk` or any Broadcom jar:
 For an adapter that ships dashboards/views, add a `bundled_content:` block to
 `adapter.yaml` and co-locate the YAML **in this repo** under `views/` and
 `dashboards/` (paths resolve relative to `adapter.yaml`).
+
+## License
+
+MIT, see `LICENSE`. Repos instantiated from this template inherit the file; keep or replace it as the pak's own license.
