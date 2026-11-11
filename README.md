@@ -75,26 +75,27 @@ A pak instantiated from the template also carries a copy of `pak-tests.yml` that
 ## Local dev build (preview)
 
 The official `.pak` is built by CI on a tag (next section). For a local preview,
-use the factory's builder. The Broadcom SDK jar (`vrops-adapters-sdk-2.2.jar`) is
-**not** shipped — supply it from your appliance:
+use the factory's builder. The Broadcom SDK jar for VCF Operations 9.0.2 is **not** shipped —
+supply it from a 9.0.2 appliance (JDK 17 or newer is needed to read it):
 
 ```sh
 # Obtain the SDK jar once from a VCF Ops appliance:
-#   scp root@<appliance>:/usr/lib/vmware-vcops/common-lib/vrops-adapters-sdk-2.2.jar .
+#   scp root@<appliance>:/usr/lib/vmware-vcops/common/lib/vrops-adapters-sdk.jar .
+#   (check its sha256 and rename it as described in the build instructions below)
 
 # Either pass it explicitly:
-python3 -m vcfops_managementpacks build-sdk content/sdk-adapters/<name> \
-  --sdk-jar /path/to/vrops-adapters-sdk-2.2.jar -o dist
+python3 -m vcfcf_managementpacks build-sdk content/sdk-adapters/<name> \
+  --sdk-jar /path/to/vrops-adapters-sdk-9.0.2.0.25137845.jar -o dist
 
 # ...or set it once in the environment:
-export VCFCF_SDK_JAR=/path/to/vrops-adapters-sdk-2.2.jar
-python3 -m vcfops_managementpacks build-sdk content/sdk-adapters/<name> -o dist
+export VCFCF_SDK_JAR=/path/to/vrops-adapters-sdk-9.0.2.0.25137845.jar
+python3 -m vcfcf_managementpacks build-sdk content/sdk-adapters/<name> -o dist
 ```
 
 Validate first (the cheap loop — exhaust this before building a pak):
 
 ```sh
-python3 -m vcfops_managementpacks validate-sdk content/sdk-adapters/<name>
+python3 -m vcfcf_managementpacks validate-sdk content/sdk-adapters/<name>
 ```
 
 The framework jar (`vcfcf-adapter-base.jar`) is provided by the builder; you do
@@ -105,33 +106,43 @@ The framework jar (`vcfcf-adapter-base.jar`) is provided by the builder; you do
 You don't need this repo's CI or the VCF Content Factory checkout to
 build the `.pak` — the toolchain is a portable tarball. You need:
 
-- **JDK 11+** (`javac` + `jar` on PATH)
+- **JDK 17+** (`javac` + `jar` on PATH; the 9.0.2 SDK jar's class files are Java 17)
 - **python3** with `pyyaml` (`python3 -m pip install pyyaml`)
 - **The GitHub CLI** (`gh`) — used to download the build toolchain
   below. The factory repo is public, so no `gh auth login` is needed
   for the download (authenticate only if you hit anonymous API rate
   limits). No `gh`? See the `curl` alternative under step 1.
-- **The Broadcom adapter SDK jar** (`vrops-adapters-sdk-2.2.jar`).
-  This is a Broadcom build artifact with no public redistribution
-  channel — it is **never** bundled in the toolchain or this repo.
-  Get it from your own VCF Operations appliance:
+- **The Broadcom adapter SDK jar for VCF Operations 9.0.2**, and
+  **JDK 17 or newer** to read it. This is a Broadcom build artifact
+  with no public redistribution channel — it is **never** bundled in
+  the toolchain or this repo. The jar is different on every platform
+  version; the build compiles against the 9.0.2 one. Get it from a VCF
+  Operations 9.0.2 appliance, where it is
+  `/usr/lib/vmware-vcops/common/lib/vrops-adapters-sdk.jar`:
 
   ```
-  scp root@<appliance>:/usr/lib/vmware-vcops/common-lib/vrops-adapters-sdk-2.2.jar .
+  scp root@<appliance>:/usr/lib/vmware-vcops/common/lib/vrops-adapters-sdk.jar .
+  sha256sum vrops-adapters-sdk.jar
   ```
 
-  (Also present at
-  `/usr/lib/vmware-vcops/suite-api/WEB-INF/lib/vrops-adapters-sdk.jar`.
-  Partners can pull it from the Broadcom TAP / partner SDK portal
-  instead.)
+  Look the hash up in the table under "Consumer contract" in the
+  buildkit release notes. It lists the builds the kit recognises and the
+  file name it uses for each, `vrops-adapters-sdk-<version>.<build>.jar`
+  (for example `vrops-adapters-sdk-9.0.2.0.25137845.jar`); rename your
+  copy to match. The kit identifies the jar by its hash, so a jar from a
+  patched appliance is a different build with a different name. The same
+  section covers the optional 8.18.7 and 9.1.1 jars for the
+  compatibility checks. Partners can pull the jar from the Broadcom TAP
+  / partner SDK portal instead.
 
 Then, from the root of this repo:
 
 ```bash
 # 1. Fetch the build toolchain. Pin a full sdk-buildkit-vX.Y.Z tag (the
 #    floating sdk-buildkit-v1 tag moves under you) and verify the published
-#    checksum before unpacking.
-BUILDKIT_VERSION=1.0.11
+#    checksum before unpacking. 1.0.27 is the version this repo's release
+#    workflow pins.
+BUILDKIT_VERSION=1.0.27
 gh release download "sdk-buildkit-v$BUILDKIT_VERSION" \
   --repo sentania-labs/vcf-content-factory \
   --pattern "sdk-buildkit-$BUILDKIT_VERSION.tgz*"
@@ -143,7 +154,7 @@ sha256sum -c "sdk-buildkit-$BUILDKIT_VERSION.tgz.sha256"   # macOS: shasum -a 25
 tar xzf "sdk-buildkit-$BUILDKIT_VERSION.tgz"
 
 # 2. Point the kit at your SDK jar and build
-export VCFCF_SDK_JAR=/path/to/vrops-adapters-sdk-2.2.jar
+export VCFCF_SDK_JAR=/path/to/vrops-adapters-sdk-9.0.2.0.25137845.jar
 python3 -m sdk_buildkit validate-sdk .   # cheap loop: compile-check
 python3 -m sdk_buildkit build-sdk .      # emits the .pak
 ```
